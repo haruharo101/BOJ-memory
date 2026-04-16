@@ -276,6 +276,27 @@ function formatOverRating(value) {
   });
 }
 
+const overRatingSoftness = 0.22;
+
+function softenRgbColor(color, softness = overRatingSoftness) {
+  const match = color.match(/^rgb\((\d+),\s*(\d+),\s*(\d+)\)$/);
+  if (!match) return color;
+
+  const [, red, green, blue] = match.map(Number);
+  const soften = (channel) => Math.round(channel + (255 - channel) * softness);
+  return `rgb(${soften(red)}, ${soften(green)}, ${soften(blue)})`;
+}
+
+function softenOverRatingStops(stops) {
+  return stops.map(([offset, color]) => [offset, softenRgbColor(color)]);
+}
+
+function overRatingCssGradient(stops) {
+  return `linear-gradient(135deg, ${stops
+    .map(([offset, color]) => `${color} ${Math.round(offset * 1000) / 10}%`)
+    .join(", ")})`;
+}
+
 const overRatingGradientBands = [
   {
     minimum: 160000,
@@ -349,7 +370,14 @@ const overRatingGradientBands = [
       [1, "rgb(252, 173, 130)"],
     ],
   },
-];
+].map((band) => {
+  const stops = softenOverRatingStops(band.stops);
+  return {
+    ...band,
+    css: overRatingCssGradient(stops),
+    stops,
+  };
+});
 
 function overRatingGradientBand(value) {
   const numericValue = Number(value || 0);
