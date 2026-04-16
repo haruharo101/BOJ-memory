@@ -1,8 +1,9 @@
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
-import { extname, join, normalize } from "node:path";
+import { extname, join, normalize, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+const __filename = fileURLToPath(import.meta.url);
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const publicDir = join(__dirname, "public");
 const port = Number(process.env.PORT || 5173);
@@ -613,6 +614,10 @@ const server = createServer((req, res) => {
   serveStatic(req, res);
 });
 
-server.listen(port, () => {
-  console.log(`Goodbye BOJ is running at http://localhost:${port}`);
-});
+export { handleMemoryRequest, proxyImageRequest };
+
+if (process.argv[1] && resolve(process.argv[1]) === __filename) {
+  server.listen(port, () => {
+    console.log(`Goodbye BOJ is running at http://localhost:${port}`);
+  });
+}
