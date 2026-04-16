@@ -11,8 +11,6 @@ const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 const apiBaseUrl = (window.BOJ_MEMORY_API_BASE_URL || "").replace(/\/$/, "");
 let storyObserver;
 let activeCategory = "";
-let wheelScrollTarget = window.scrollY;
-let wheelScrollFrame = 0;
 const numberAnimationFrames = new WeakMap();
 const panelResetTimers = new WeakMap();
 const tierAnimationTimers = new WeakMap();
@@ -34,86 +32,6 @@ function pinInitialSearchPosition() {
     if (memory.childElementCount) return;
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   });
-}
-
-function maxScrollY() {
-  return Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
-}
-
-function clampScrollTarget(value) {
-  return Math.min(maxScrollY(), Math.max(0, value));
-}
-
-function canScrollElement(element, deltaY) {
-  if (!element || element === document.body || element === document.documentElement) return false;
-  const style = getComputedStyle(element);
-  const overflowY = style.overflowY;
-  const canScroll = /(auto|scroll)/.test(overflowY) && element.scrollHeight > element.clientHeight + 1;
-  if (!canScroll) return false;
-  return deltaY > 0
-    ? element.scrollTop + element.clientHeight < element.scrollHeight - 1
-    : element.scrollTop > 1;
-}
-
-function hasScrollableAncestor(target, deltaY) {
-  let element = target instanceof Element ? target : null;
-  while (element) {
-    if (canScrollElement(element, deltaY)) return true;
-    element = element.parentElement;
-  }
-  return false;
-}
-
-function normalizedWheelDelta(event) {
-  const lineHeight = 40;
-  const pageHeight = window.innerHeight * 0.86;
-  if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) return event.deltaY * lineHeight;
-  if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) return event.deltaY * pageHeight;
-  return event.deltaY;
-}
-
-function animateWheelScroll() {
-  if (wheelScrollFrame) return;
-  document.documentElement.classList.add("is-wheel-smoothing");
-
-  function frame() {
-    const current = window.scrollY;
-    const distance = wheelScrollTarget - current;
-    const step = distance * 0.18;
-
-    if (Math.abs(distance) > 0.7) {
-      window.scrollTo(0, current + step);
-      wheelScrollFrame = requestAnimationFrame(frame);
-      return;
-    }
-
-    window.scrollTo(0, wheelScrollTarget);
-    document.documentElement.classList.remove("is-wheel-smoothing");
-    wheelScrollFrame = 0;
-  }
-
-  wheelScrollFrame = requestAnimationFrame(frame);
-}
-
-function cancelWheelScroll() {
-  if (wheelScrollFrame) {
-    cancelAnimationFrame(wheelScrollFrame);
-  }
-  wheelScrollFrame = 0;
-  wheelScrollTarget = window.scrollY;
-  document.documentElement.classList.remove("is-wheel-smoothing");
-}
-
-function handleSmoothWheel(event) {
-  if (event.defaultPrevented || event.ctrlKey || event.metaKey) return;
-
-  const deltaY = normalizedWheelDelta(event);
-  const isCoarseWheel = event.deltaMode !== WheelEvent.DOM_DELTA_PIXEL || Math.abs(deltaY) >= 48;
-  if (!isCoarseWheel || hasScrollableAncestor(event.target, deltaY)) return;
-
-  event.preventDefault();
-  wheelScrollTarget = clampScrollTarget((wheelScrollFrame ? wheelScrollTarget : window.scrollY) + deltaY * 1.08);
-  animateWheelScroll();
 }
 
 function startMemoryGraph(canvas) {
@@ -2018,7 +1936,6 @@ function renderStoryNav(categories) {
       item.type = "button";
       item.dataset.navCategory = category;
       item.addEventListener("click", () => {
-        cancelWheelScroll();
         storyTargetForCategory(category)?.scrollIntoView({
           behavior: "smooth",
           block: "start",
@@ -2249,7 +2166,6 @@ form.addEventListener("submit", async (event) => {
   }
 });
 
-window.addEventListener("wheel", handleSmoothWheel, { passive: false });
 window.addEventListener("pageshow", pinInitialSearchPosition);
 pinInitialSearchPosition();
 startMemoryGraph(graphCanvas);
