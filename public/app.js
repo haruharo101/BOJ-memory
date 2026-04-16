@@ -1202,7 +1202,7 @@ async function createProfileCanvas(user, stats, topProblems, tier, classText, me
   const statGap = 156;
   const ratingPairWidth = 108 + 6 + 120;
   const statStartX = isRightLayout ? contentRight - (statGap * 2 + statWidth) : contentX;
-  const topGridX = isRightLayout ? contentRight - ratingPairWidth - 270 : contentX + 232;
+  const topGridX = isRightLayout ? contentRight - ratingPairWidth - 270 : contentX + 259;
   const rankingSize = 13;
   const textAlign = isRightLayout ? "right" : "left";
 

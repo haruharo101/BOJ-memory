@@ -12,6 +12,15 @@ const bojBaseUrl = "https://www.acmicpc.net";
 const readerBaseUrl = "https://r.jina.ai/http://r.jina.ai/http://";
 const imageProxyAllowedHosts = new Set(["static.solved.ac", "ui-avatars.com"]);
 const imageProxyMaxBytes = 5 * 1024 * 1024;
+const imageContentTypesByExtension = new Map([
+  [".avif", "image/avif"],
+  [".gif", "image/gif"],
+  [".jpeg", "image/jpeg"],
+  [".jpg", "image/jpeg"],
+  [".png", "image/png"],
+  [".svg", "image/svg+xml"],
+  [".webp", "image/webp"],
+]);
 const upstreamTimeoutMs = 9000;
 const memoryCacheTtlMs = 5 * 60 * 1000;
 const memoryCacheMaxEntries = 500;
@@ -211,6 +220,10 @@ async function readBodyWithLimit(response, maxBytes) {
   return Buffer.concat(chunks, total);
 }
 
+function imageContentTypeFromPath(pathname) {
+  return imageContentTypesByExtension.get(extname(pathname).toLowerCase()) || null;
+}
+
 async function proxyImageRequest(req, res) {
   if (!validateFrontendRequest(req, res)) return;
 
@@ -259,8 +272,12 @@ async function proxyImageRequest(req, res) {
       return;
     }
 
-    const contentType = response.headers.get("content-type") || "application/octet-stream";
-    if (!contentType.toLowerCase().startsWith("image/")) {
+    const upstreamContentType = response.headers.get("content-type") || "application/octet-stream";
+    const inferredContentType = imageContentTypeFromPath(target.pathname);
+    const contentType = upstreamContentType.toLowerCase().startsWith("image/")
+      ? upstreamContentType
+      : inferredContentType;
+    if (!contentType) {
       res.writeHead(415, corsHeaders(req, { "content-type": "text/plain; charset=utf-8" }));
       res.end("Unsupported image response");
       return;
