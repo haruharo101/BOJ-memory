@@ -150,14 +150,14 @@ input {
   position: relative;
   z-index: 3;
   width: min(1120px, calc(100% - 32px));
-  min-height: 100svh;
+  min-height: 100dvh;
   margin: 0 auto;
   padding: 0;
   display: block;
 }
 
 .intro {
-  min-height: 100svh;
+  min-height: 100dvh;
   padding: 48px 0;
   display: flex;
   align-items: center;
@@ -261,11 +261,11 @@ input {
 
 .story {
   display: grid;
-  row-gap: 12svh;
+  row-gap: 0;
 }
 
 .story-panel {
-  min-height: 112svh;
+  min-height: 100svh;
   display: grid;
   align-items: center;
   justify-items: start;
@@ -579,6 +579,10 @@ input {
   font-size: 4.2rem;
 }
 
+.user-story-panel + .class-story-panel {
+  margin-top: 16svh;
+}
+
 .tier-unrated {
   color: #c7ced0;
 }
@@ -737,12 +741,13 @@ input {
 }
 
 .rating-story-panel.is-current .rating-tier-dot,
-.rating-story-panel.is-leaving .rating-tier-dot {
+.rating-story-panel.is-leaving .rating-tier-dot,
+.rating-story-panel.has-tier-animation-played .rating-tier-dot {
   opacity: 1;
   transform: translate3d(0, 0, 0) scale(1);
 }
 
-.rating-story-panel.is-current .rating-tier-dot {
+.rating-story-panel.is-current:not(.has-tier-animation-played) .rating-tier-dot {
   animation: tier-dot-spread 560ms cubic-bezier(0.16, 1, 0.3, 1) both;
   animation-delay: var(--dot-delay, 0ms);
 }
@@ -781,7 +786,7 @@ input {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .rating-story-panel.is-current .rating-tier-dot {
+  .rating-story-panel.is-current:not(.has-tier-animation-played) .rating-tier-dot {
     animation: none;
   }
 }
@@ -1146,7 +1151,7 @@ input {
   }
 
   .story-panel {
-    min-height: 108svh;
+    min-height: 100svh;
     padding: 56px 0;
   }
 

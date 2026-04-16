@@ -8,12 +8,15 @@ const storyNav = document.querySelector("#story-nav");
 
 const numberFormatter = new Intl.NumberFormat("ko-KR");
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
-const escapeSelector = window.CSS?.escape ?? ((value) => value.replace(/["\\]/g, "\\$&"));
 const apiBaseUrl = (window.BOJ_MEMORY_API_BASE_URL || "").replace(/\/$/, "");
 let storyObserver;
 let activeCategory = "";
+let storySnapTimer = 0;
+let isStorySnapping = false;
+let lastScrollY = window.scrollY;
 const numberAnimationFrames = new WeakMap();
 const panelResetTimers = new WeakMap();
+const tierAnimationTimers = new WeakMap();
 const profileImageWidth = 1000;
 const profileImageHeight = 600;
 const profileRenderScale = 2;
@@ -21,6 +24,19 @@ const reportPageWidth = 1400;
 const reportPageHeight = 900;
 const reportRenderScale = 2;
 const canvasFontFamily = "Pretendard, system-ui, sans-serif";
+
+function pinInitialSearchPosition() {
+  if (window.location.hash) return;
+  if ("scrollRestoration" in history) {
+    history.scrollRestoration = "manual";
+  }
+
+  requestAnimationFrame(() => {
+    if (memory.childElementCount) return;
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    lastScrollY = window.scrollY;
+  });
+}
 
 function startMemoryGraph(canvas) {
   if (!canvas) return;
@@ -274,19 +290,19 @@ function formatOverRating(value) {
   });
 }
 
-const overRatingSoftness = 0.22;
+const overRatingLightness = 0.42;
 
-function softenRgbColor(color, softness = overRatingSoftness) {
+function lightenRgbColor(color, lightness = overRatingLightness) {
   const match = color.match(/^rgb\((\d+),\s*(\d+),\s*(\d+)\)$/);
   if (!match) return color;
 
   const [, red, green, blue] = match.map(Number);
-  const soften = (channel) => Math.round(channel + (255 - channel) * softness);
-  return `rgb(${soften(red)}, ${soften(green)}, ${soften(blue)})`;
+  const lighten = (channel) => Math.round(channel + (255 - channel) * lightness);
+  return `rgb(${lighten(red)}, ${lighten(green)}, ${lighten(blue)})`;
 }
 
-function softenOverRatingStops(stops) {
-  return stops.map(([offset, color]) => [offset, softenRgbColor(color)]);
+function lightenOverRatingStops(stops) {
+  return stops.map(([offset, color]) => [offset, lightenRgbColor(color)]);
 }
 
 function overRatingCssGradient(stops) {
@@ -369,7 +385,7 @@ const overRatingGradientBands = [
     ],
   },
 ].map((band) => {
-  const stops = softenOverRatingStops(band.stops);
+  const stops = lightenOverRatingStops(band.stops);
   return {
     ...band,
     css: overRatingCssGradient(stops),
@@ -391,6 +407,13 @@ function createOverRatingCanvasGradient(context, value, x, y, width, height, fal
     gradient.addColorStop(offset, color);
   }
   return gradient;
+}
+
+function createOverRatingTextGradient(context, value, text, x, y, options = {}) {
+  const align = options.align ?? "left";
+  const textWidth = measureTextWidth(context, text, options);
+  const gradientX = align === "right" ? x - textWidth : x;
+  return createOverRatingCanvasGradient(context, value, gradientX, y - (options.size ?? 20), textWidth, options.size ?? 20);
 }
 
 function tierInfo(tier) {
@@ -583,10 +606,10 @@ function createRatingDetails(user, stats, topProblems) {
 
   const bonuses = createElement("div", "rating-bonuses");
   const bonusItems = [
-    ["top 100 rating", user.ratingByProblemsSum],
-    ["class rating bonus", user.ratingByClass],
-    ["solve bonus", user.ratingBySolvedCount],
-    ["attribution bonus", user.ratingByVoteCount],
+    ["TOP 100 RATING", user.ratingByProblemsSum],
+    ["CLASS BONUS", user.ratingByClass],
+    ["SOLVE BONUS", user.ratingBySolvedCount],
+    ["CONTRIBUTION BONUS", user.ratingByVoteCount],
   ];
 
   for (const [label, value] of bonusItems) {
@@ -1124,12 +1147,26 @@ function drawRatingPair(context, user, stats, x, y, options = {}) {
   const valueOffset = options.valueOffset ?? 39;
   const align = options.align ?? "left";
   const overOffset = options.overOffset ?? 0;
+  const overRightOffset = options.overRightOffset ?? 0;
   const totalWidth = acWidth + columnGap + overWidth;
   const startX = align === "right" ? x - totalWidth : x;
-  const acX = align === "right" ? startX + acWidth : startX;
-  const overX = align === "right" ? x : startX + acWidth + columnGap + overOffset;
+  const acX = align === "right" ? x : startX;
+  const overX = align === "right" ? startX + overWidth - overRightOffset : startX + acWidth + columnGap + overOffset;
   const textAlign = align === "right" ? "right" : "left";
-  const overGradientX = align === "right" ? overX - overWidth : overX;
+  const overRatingText = formatOverRating(user.overRating);
+  const overTextOptions = {
+    size: overSize,
+    weight: 950,
+    align: textAlign,
+  };
+  const overGradient = createOverRatingTextGradient(
+    context,
+    user.overRating,
+    overRatingText,
+    overX,
+    y + valueOffset,
+    overTextOptions,
+  );
 
   drawOverviewText(context, "AC RATING", acX, y, {
     color: "rgba(255,255,255,0.76)",
@@ -1149,11 +1186,9 @@ function drawRatingPair(context, user, stats, x, y, options = {}) {
     weight: 950,
     align: textAlign,
   });
-  drawOverviewText(context, formatOverRating(user.overRating), overX, y + valueOffset, {
-    color: createOverRatingCanvasGradient(context, user.overRating, overGradientX, y + valueOffset - 37, overWidth, 44),
-    size: overSize,
-    weight: 950,
-    align: textAlign,
+  drawOverviewText(context, overRatingText, overX, y + valueOffset, {
+    color: overGradient,
+    ...overTextOptions,
   });
 }
 
@@ -1264,6 +1299,7 @@ async function createProfileCanvas(user, stats, topProblems, tier, classText, me
   drawRatingPair(context, user, stats, textX, 389, {
     align: textAlign,
     overOffset: isRightLayout ? 0 : 18,
+    overRightOffset: isRightLayout ? 27 : 0,
   });
   const ratingTierItems = [
     {
@@ -1451,10 +1487,10 @@ function createRatingReportPage(backgroundImage, user, stats, topProblems, tier,
   });
 
   const bonuses = [
-    ["top 100 rating", user.ratingByProblemsSum],
-    ["class rating bonus", user.ratingByClass],
-    ["solve bonus", user.ratingBySolvedCount],
-    ["attribution bonus", user.ratingByVoteCount],
+    ["TOP 100 RATING", user.ratingByProblemsSum],
+    ["CLASS BONUS", user.ratingByClass],
+    ["SOLVE BONUS", user.ratingBySolvedCount],
+    ["CONTRIBUTION BONUS", user.ratingByVoteCount],
   ];
   for (let index = 0; index < bonuses.length; index += 1) {
     const [label, value] = bonuses[index];
@@ -1469,45 +1505,74 @@ function createRatingReportPage(backgroundImage, user, stats, topProblems, tier,
   return canvas;
 }
 
-function createBojReportPage(backgroundImage, user, bojStats) {
-  const { canvas, context } = createReportPage(backgroundImage, "BOJ STATS", `${user.handle} profile numbers`, hashString(`${user.handle}:boj`));
-
-  if (!bojStats.length) {
-    drawOverviewText(context, "BOJ 프로필 통계를 읽어오지 못했습니다.", 82, 220, {
-      color: "rgba(255,255,255,0.72)",
-      size: 22,
-      weight: 850,
-    });
-    return canvas;
-  }
-
-  const priorityLabels = ["등수", "맞은 문제", "맞았습니다"];
-  const priorityStats = priorityLabels.map((label) => bojStats.find((stat) => stat.label === label)).filter(Boolean);
-  const restStats = bojStats.filter((stat) => !priorityLabels.includes(stat.label));
-
-  for (let index = 0; index < priorityStats.length; index += 1) {
-    const stat = priorityStats[index];
-    drawReportMetric(context, bojStatLabel(stat.label), formatNumber(stat.value), 82 + index * 300, 250, 240);
-  }
-
-  const restRows = Math.max(1, Math.ceil(restStats.length / 4));
-  const restGap = 68;
-  const restStartY = Math.max(400, 530 - ((restRows - 1) * restGap) / 2);
-  for (let index = 0; index < restStats.length; index += 1) {
-    const stat = restStats[index];
+function drawBojReportStatsGrid(context, stats, startY) {
+  const columnGap = 300;
+  const rowGap = 74;
+  for (let index = 0; index < stats.length; index += 1) {
+    const stat = stats[index];
     const column = index % 4;
     const row = Math.floor(index / 4);
-    const x = 82 + column * 300;
-    const y = restStartY + row * restGap;
+    const x = 82 + column * columnGap;
+    const y = startY + row * rowGap;
     drawOverviewText(context, formatNumber(stat.value), x, y, { color: "#ffffff", size: 28, weight: 950 });
     drawOverviewText(context, bojStatLabel(stat.label), x, y + 30, {
       color: stat.styleClass ? resultColor(stat.styleClass) : "rgba(255,255,255,0.62)",
       size: 13,
       weight: 850,
+      maxWidth: 250,
     });
   }
+}
 
-  return canvas;
+function createBojReportPages(backgroundImage, user, bojStats) {
+  const emptyPage = () => createReportPage(
+    backgroundImage,
+    "BOJ STATS",
+    `${user.handle} profile numbers`,
+    hashString(`${user.handle}:boj`),
+  );
+
+  if (!bojStats.length) {
+    const { canvas, context } = emptyPage();
+    drawOverviewText(context, "BOJ 프로필 통계를 읽어오지 못했습니다.", 82, 220, {
+      color: "rgba(255,255,255,0.72)",
+      size: 22,
+      weight: 850,
+    });
+    return [canvas];
+  }
+
+  const priorityLabels = ["등수", "맞은 문제", "맞았습니다"];
+  const priorityStats = priorityLabels.map((label) => bojStats.find((stat) => stat.label === label)).filter(Boolean);
+  const restStats = bojStats.filter((stat) => !priorityLabels.includes(stat.label));
+  const pages = [];
+  const restPerPage = 20;
+
+  for (let offset = 0; offset < Math.max(restStats.length, 1); offset += restPerPage) {
+    const pageNumber = Math.floor(offset / restPerPage) + 1;
+    const isFirstPage = offset === 0;
+    const chunk = restStats.slice(offset, offset + restPerPage);
+    const { canvas, context } = createReportPage(
+      backgroundImage,
+      "BOJ STATS",
+      `${user.handle} profile numbers ${pageNumber}`,
+      hashString(`${user.handle}:boj:${offset}`),
+    );
+
+    if (isFirstPage) {
+      for (let index = 0; index < priorityStats.length; index += 1) {
+        const stat = priorityStats[index];
+        drawReportMetric(context, bojStatLabel(stat.label), formatNumber(stat.value), 82 + index * 300, 250, 240);
+      }
+      drawBojReportStatsGrid(context, chunk, 430);
+    } else {
+      drawBojReportStatsGrid(context, chunk, 250);
+    }
+
+    pages.push(canvas);
+  }
+
+  return pages;
 }
 
 function drawLanguagePie(context, statuses, x, y, radius) {
@@ -1628,7 +1693,7 @@ async function createFullReportCanvases(user, stats, topProblems, tier, classTex
     profileCanvas,
     createClassReportPage(backgroundImage, user, reportData.classStats),
     createRatingReportPage(backgroundImage, user, stats, topProblems, tier, classText),
-    createBojReportPage(backgroundImage, user, reportData.bojStats),
+    ...createBojReportPages(backgroundImage, user, reportData.bojStats),
     ...createLanguageReportPages(backgroundImage, user, reportData.languageStats),
   ];
 }
@@ -1739,7 +1804,7 @@ function createOverviewPanel(user, stats, topProblems, tier, classText, media, r
 
   overviewPanel.inner.append(
     createElement("p", "story-value", "overview"),
-    createElement("p", "story-detail", "SNS에 올릴 1000 x 600 프로필 이미지를 저장할 수 있습니다."),
+    createElement("p", "story-detail", "SNS에 올릴 2000 x 1200 프로필 이미지를 저장할 수 있습니다."),
   );
 
   const actions = createElement("div", "overview-actions");
@@ -1778,10 +1843,10 @@ function createOverviewPanel(user, stats, topProblems, tier, classText, media, r
   actions.append(saveButton, pdfButton, githubButton);
 
   const layoutToggle = createElement("div", "overview-layout-toggle");
-  layoutToggle.append(createElement("span", "overview-layout-label", "저장 이미지/PDF 정렬"));
+  layoutToggle.append(createElement("span", "overview-layout-label", "표지 이미지의 요소들을..."));
   const layoutOptions = createElement("div", "overview-layout-options");
   layoutOptions.setAttribute("role", "radiogroup");
-  layoutOptions.setAttribute("aria-label", "저장 이미지 정렬");
+  layoutOptions.setAttribute("aria-label", "표지 이미지의 요소 정렬");
 
   for (const [value, labelText] of [
     ["left", "왼쪽 정렬"],
@@ -1865,17 +1930,86 @@ function observeStory() {
   if (intro) storyObserver.observe(intro);
 }
 
+function categorySelector(category) {
+  return `[data-category="${String(category).replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"]`;
+}
+
+function storyTargetForCategory(category) {
+  if (intro?.dataset.category === category) return intro;
+  return memory.querySelector(`.story-panel${categorySelector(category)}`);
+}
+
+function storySnapTargets() {
+  return [intro, ...memory.querySelectorAll(".story-panel")].filter(Boolean);
+}
+
+function isScrollingInsideTallStorySection(targets) {
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+  for (const target of targets) {
+    const rect = target.getBoundingClientRect();
+    const isTallSection = rect.height > viewportHeight + 48;
+    const isInsideSection = rect.top < -28 && rect.bottom > viewportHeight * 0.35;
+    if (isTallSection && isInsideSection) return true;
+  }
+
+  return false;
+}
+
+function nearestStorySnapTarget() {
+  const targets = storySnapTargets();
+  if (targets.length < 2) return null;
+  if (isScrollingInsideTallStorySection(targets)) return null;
+
+  let nearest = null;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+  for (const target of targets) {
+    const distance = Math.abs(target.getBoundingClientRect().top);
+    if (distance < nearestDistance) {
+      nearest = target;
+      nearestDistance = distance;
+    }
+  }
+
+  return nearestDistance > 28 ? nearest : null;
+}
+
+function snapToNearestStorySection() {
+  if (isStorySnapping) return;
+
+  const target = nearestStorySnapTarget();
+  if (!target) return;
+
+  isStorySnapping = true;
+  target.scrollIntoView({
+    behavior: reducedMotion.matches ? "auto" : "smooth",
+    block: "start",
+  });
+  window.setTimeout(() => {
+    isStorySnapping = false;
+  }, reducedMotion.matches ? 80 : 680);
+}
+
+function scheduleStorySnap() {
+  const currentScrollY = window.scrollY;
+  const moved = Math.abs(currentScrollY - lastScrollY) > 1;
+  lastScrollY = currentScrollY;
+  if (!moved || isStorySnapping) return;
+
+  window.clearTimeout(storySnapTimer);
+  storySnapTimer = window.setTimeout(snapToNearestStorySection, 280);
+}
+
 function renderStoryNav(categories) {
   storyNav.style.setProperty("--story-count", categories.length);
   storyNav.replaceChildren(
     ...categories.map((category) => {
       const item = createElement("button", "story-nav-item", category);
       item.type = "button";
-      item.dataset.category = category;
+      item.dataset.navCategory = category;
       item.addEventListener("click", () => {
-        document.querySelector(`[data-category="${escapeSelector(category)}"]`)?.scrollIntoView({
+        storyTargetForCategory(category)?.scrollIntoView({
           behavior: "smooth",
-          block: "center",
+          block: "start",
         });
       });
       return item;
@@ -1888,7 +2022,7 @@ function setActiveCategory(category) {
   activeCategory = category;
 
   for (const item of storyNav.querySelectorAll(".story-nav-item")) {
-    item.classList.toggle("is-active", item.dataset.category === category);
+    item.classList.toggle("is-active", item.dataset.navCategory === category);
   }
 
   for (const panel of memory.querySelectorAll(".story-panel")) {
@@ -1910,13 +2044,24 @@ function setActiveCategory(category) {
     }
   }
 
-  const currentPanel = memory.querySelector(`[data-category="${escapeSelector(category)}"]`);
+  const currentPanel = memory.querySelector(`.story-panel${categorySelector(category)}`);
   if (currentPanel) {
     const previousTimer = panelResetTimers.get(currentPanel);
     if (previousTimer) clearTimeout(previousTimer);
 
     currentPanel.classList.remove("is-leaving");
     requestAnimationFrame(() => currentPanel.classList.add("is-current"));
+
+    if (currentPanel.classList.contains("rating-story-panel") && !currentPanel.classList.contains("has-tier-animation-played")) {
+      const previousTierTimer = tierAnimationTimers.get(currentPanel);
+      if (previousTierTimer) clearTimeout(previousTierTimer);
+
+      const tierTimer = setTimeout(() => {
+        currentPanel.classList.add("has-tier-animation-played");
+        tierAnimationTimers.delete(currentPanel);
+      }, reducedMotion.matches ? 0 : 1320);
+      tierAnimationTimers.set(currentPanel, tierTimer);
+    }
   }
 
   return changed;
@@ -1935,7 +2080,7 @@ function renderMemory(payload) {
   const bojRank = bojStats.find((stat) => stat.label === "등수")?.value;
   const categories = [
     "search",
-    "user id",
+    "user info",
     "class",
     "AC RATING",
     "BOJ stats",
@@ -1945,7 +2090,7 @@ function renderMemory(payload) {
 
   const story = createElement("article", "story");
 
-  const userPanel = createStoryPanel("user id");
+  const userPanel = createStoryPanel("user info");
   userPanel.section.classList.add("user-story-panel");
   const backgroundFrame = createElement("figure", "user-background");
   const backgroundImage = createElement("img", "user-background-image");
@@ -2092,4 +2237,7 @@ form.addEventListener("submit", async (event) => {
   }
 });
 
+window.addEventListener("scroll", scheduleStorySnap, { passive: true });
+window.addEventListener("pageshow", pinInitialSearchPosition);
+pinInitialSearchPosition();
 startMemoryGraph(graphCanvas);
