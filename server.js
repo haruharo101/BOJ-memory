@@ -19,6 +19,22 @@ const rateLimitWindowMs = 60 * 1000;
 const memoryRateLimitMax = 24;
 const imageRateLimitMax = 120;
 const rateLimitMaxKeys = 1000;
+const productionOrigin = "https://boj-memory.vercel.app";
+const allowedFrontendOrigins = new Set([
+  productionOrigin,
+  "http://localhost:5173",
+  "http://localhost:5174",
+  "http://127.0.0.1:5173",
+  "http://127.0.0.1:5174",
+]);
+if (process.env.VERCEL_URL) {
+  allowedFrontendOrigins.add(`https://${process.env.VERCEL_URL}`);
+}
+for (const origin of (process.env.BOJ_MEMORY_FRONTEND_ORIGINS || "").split(",")) {
+  if (origin.trim()) {
+    allowedFrontendOrigins.add(origin.trim().replace(/\/$/, ""));
+  }
+}
 const memoryCache = new Map();
 const memoryRateLimits = new Map();
 const imageRateLimits = new Map();
@@ -33,15 +49,71 @@ const contentTypes = {
   ".jpeg": "image/jpeg",
 };
 
-function sendJson(res, status, payload) {
-  const body = JSON.stringify(payload);
-  res.writeHead(status, {
-    "content-type": "application/json; charset=utf-8",
+function originFromHeader(value) {
+  if (typeof value !== "string" || !value) return null;
+
+  try {
+    return new URL(value).origin;
+  } catch {
+    return null;
+  }
+}
+
+function requestSourceOrigin(req) {
+  return originFromHeader(req.headers.origin) || originFromHeader(req.headers.referer);
+}
+
+function isAllowedFrontendOrigin(origin) {
+  if (!origin) return true;
+  if (allowedFrontendOrigins.has(origin)) return true;
+
+  try {
+    const { hostname } = new URL(origin);
+    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+  } catch {
+    return false;
+  }
+}
+
+function corsHeaders(req, extraHeaders = {}) {
+  const origin = originFromHeader(req.headers.origin);
+  const headers = { ...extraHeaders };
+  if (origin && isAllowedFrontendOrigin(origin)) {
+    headers["access-control-allow-origin"] = origin;
+    headers["vary"] = headers.vary ? `${headers.vary}, Origin` : "Origin";
+  }
+  return headers;
+}
+
+function validateFrontendRequest(req, res) {
+  const origin = requestSourceOrigin(req);
+  if (isAllowedFrontendOrigin(origin)) return true;
+
+  res.writeHead(403, {
+    "content-type": "text/plain; charset=utf-8",
     "cache-control": "no-store",
-    "access-control-allow-origin": "*",
+  });
+  res.end("Forbidden");
+  return false;
+}
+
+function handleApiOptions(req, res) {
+  if (!validateFrontendRequest(req, res)) return;
+
+  res.writeHead(204, corsHeaders(req, {
     "access-control-allow-methods": "GET, OPTIONS",
     "access-control-allow-headers": "content-type",
-  });
+    "access-control-max-age": "86400",
+  }));
+  res.end();
+}
+
+function sendJson(req, res, status, payload) {
+  const body = JSON.stringify(payload);
+  res.writeHead(status, corsHeaders(req, {
+    "content-type": "application/json; charset=utf-8",
+    "cache-control": "no-store",
+  }));
   res.end(body);
 }
 
@@ -140,9 +212,11 @@ async function readBodyWithLimit(response, maxBytes) {
 }
 
 async function proxyImageRequest(req, res) {
+  if (!validateFrontendRequest(req, res)) return;
+
   const key = `${clientKey(req)}:image`;
   if (!checkRateLimit(imageRateLimits, key, imageRateLimitMax, rateLimitWindowMs)) {
-    res.writeHead(429);
+    res.writeHead(429, corsHeaders(req, { "content-type": "text/plain; charset=utf-8" }));
     res.end("Too many requests");
     return;
   }
@@ -151,7 +225,7 @@ async function proxyImageRequest(req, res) {
   const imageUrl = requestUrl.searchParams.get("url");
 
   if (!imageUrl) {
-    res.writeHead(400);
+    res.writeHead(400, corsHeaders(req, { "content-type": "text/plain; charset=utf-8" }));
     res.end("Missing image url");
     return;
   }
@@ -160,13 +234,13 @@ async function proxyImageRequest(req, res) {
   try {
     target = new URL(imageUrl);
   } catch {
-    res.writeHead(400);
+    res.writeHead(400, corsHeaders(req, { "content-type": "text/plain; charset=utf-8" }));
     res.end("Invalid image url");
     return;
   }
 
   if (target.protocol !== "https:" || !imageProxyAllowedHosts.has(target.hostname)) {
-    res.writeHead(400);
+    res.writeHead(400, corsHeaders(req, { "content-type": "text/plain; charset=utf-8" }));
     res.end("Unsupported image url");
     return;
   }
@@ -180,27 +254,26 @@ async function proxyImageRequest(req, res) {
     });
 
     if (!response.ok) {
-      res.writeHead(response.status);
+      res.writeHead(response.status, corsHeaders(req, { "content-type": "text/plain; charset=utf-8" }));
       res.end("Image request failed");
       return;
     }
 
     const contentType = response.headers.get("content-type") || "application/octet-stream";
     if (!contentType.toLowerCase().startsWith("image/")) {
-      res.writeHead(415);
+      res.writeHead(415, corsHeaders(req, { "content-type": "text/plain; charset=utf-8" }));
       res.end("Unsupported image response");
       return;
     }
 
     const body = await readBodyWithLimit(response, imageProxyMaxBytes);
-    res.writeHead(200, {
+    res.writeHead(200, corsHeaders(req, {
       "content-type": contentType,
       "cache-control": "public, max-age=86400",
-      "access-control-allow-origin": "*",
-    });
+    }));
     res.end(body);
   } catch (error) {
-    res.writeHead(error.status || 502);
+    res.writeHead(error.status || 502, corsHeaders(req, { "content-type": "text/plain; charset=utf-8" }));
     res.end(error.status === 413 ? "Image is too large" : "Image proxy failed");
   }
 }
@@ -478,22 +551,24 @@ function getClassLabel(user) {
 }
 
 async function handleMemoryRequest(req, res) {
+  if (!validateFrontendRequest(req, res)) return;
+
   const url = new URL(req.url, `http://${req.headers.host}`);
   const handle = url.searchParams.get("handle")?.trim();
 
   if (!handle) {
-    sendJson(res, 400, { message: "유저명을 입력해주세요." });
+    sendJson(req, res, 400, { message: "유저명을 입력해주세요." });
     return;
   }
 
   if (!/^[A-Za-z0-9_]{2,20}$/.test(handle)) {
-    sendJson(res, 400, { message: "BOJ 유저명 형식이 올바르지 않습니다." });
+    sendJson(req, res, 400, { message: "BOJ 유저명 형식이 올바르지 않습니다." });
     return;
   }
 
   const key = `${clientKey(req)}:memory`;
   if (!checkRateLimit(memoryRateLimits, key, memoryRateLimitMax, rateLimitWindowMs)) {
-    sendJson(res, 429, { message: "요청이 너무 많습니다. 잠시 후 다시 시도해주세요." });
+    sendJson(req, res, 429, { message: "요청이 너무 많습니다. 잠시 후 다시 시도해주세요." });
     return;
   }
 
@@ -504,7 +579,7 @@ async function handleMemoryRequest(req, res) {
 
   const cached = memoryCache.get(cacheKey);
   if (cached && Date.now() < cached.expiresAt) {
-    sendJson(res, 200, cached.payload);
+    sendJson(req, res, 200, cached.payload);
     return;
   }
 
@@ -544,9 +619,9 @@ async function handleMemoryRequest(req, res) {
     if (memoryCache.size > memoryCacheMaxEntries) {
       pruneExpiringStore(memoryCache, "expiresAt", Date.now(), memoryCacheMaxEntries);
     }
-    sendJson(res, 200, payload);
+    sendJson(req, res, 200, payload);
   } catch (error) {
-    sendJson(res, error.status || 500, {
+    sendJson(req, res, error.status || 500, {
       message: error.message || "잠시 후 다시 시도해주세요.",
     });
   }
@@ -591,13 +666,7 @@ async function serveStatic(req, res) {
 
 const server = createServer((req, res) => {
   if (req.method === "OPTIONS") {
-    res.writeHead(204, {
-      "access-control-allow-origin": "*",
-      "access-control-allow-methods": "GET, OPTIONS",
-      "access-control-allow-headers": "content-type",
-      "access-control-max-age": "86400",
-    });
-    res.end();
+    handleApiOptions(req, res);
     return;
   }
 
@@ -614,7 +683,7 @@ const server = createServer((req, res) => {
   serveStatic(req, res);
 });
 
-export { handleMemoryRequest, proxyImageRequest };
+export { corsHeaders, handleApiOptions, handleMemoryRequest, proxyImageRequest, validateFrontendRequest };
 
 if (process.argv[1] && resolve(process.argv[1]) === __filename) {
   server.listen(port, () => {

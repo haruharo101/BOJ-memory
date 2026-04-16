@@ -1,22 +1,18 @@
-import { handleMemoryRequest } from "../server.js";
+import { corsHeaders, handleApiOptions, handleMemoryRequest, validateFrontendRequest } from "../server.js";
 
 export default async function handler(req, res) {
   if (req.method === "OPTIONS") {
-    res.writeHead(204, {
-      "access-control-allow-origin": "*",
-      "access-control-allow-methods": "GET, OPTIONS",
-      "access-control-allow-headers": "content-type",
-      "access-control-max-age": "86400",
-    });
-    res.end();
+    handleApiOptions(req, res);
     return;
   }
 
+  if (!validateFrontendRequest(req, res)) return;
+
   if (req.method !== "GET") {
-    res.writeHead(405, {
-      "access-control-allow-origin": "*",
+    res.writeHead(405, corsHeaders(req, {
       "allow": "GET, OPTIONS",
-    });
+      "content-type": "text/plain; charset=utf-8",
+    }));
     res.end("Method not allowed");
     return;
   }

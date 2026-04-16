@@ -9,9 +9,7 @@ const storyNav = document.querySelector("#story-nav");
 const numberFormatter = new Intl.NumberFormat("ko-KR");
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 const escapeSelector = window.CSS?.escape ?? ((value) => value.replace(/["\\]/g, "\\$&"));
-const isGitHubPages = window.location.hostname.endsWith("github.io");
-const defaultApiBaseUrl = isGitHubPages ? "https://boj-memory.onrender.com" : "";
-const apiBaseUrl = (window.BOJ_MEMORY_API_BASE_URL || defaultApiBaseUrl).replace(/\/$/, "");
+const apiBaseUrl = (window.BOJ_MEMORY_API_BASE_URL || "").replace(/\/$/, "");
 let storyObserver;
 let activeCategory = "";
 const numberAnimationFrames = new WeakMap();
@@ -2058,15 +2056,11 @@ function renderMemory(payload) {
 }
 
 async function loadMemory(handle) {
-  if (!apiBaseUrl && isGitHubPages) {
-    throw new Error("GitHub Pages에서는 API 서버 주소가 필요합니다. public/config.js의 BOJ_MEMORY_API_BASE_URL을 설정해주세요.");
-  }
-
   const response = await fetch(`${apiBaseUrl}/api/memory?handle=${encodeURIComponent(handle)}`);
   const contentType = response.headers.get("content-type") || "";
 
   if (!contentType.includes("application/json")) {
-    throw new Error("API 서버에서 JSON 응답을 받지 못했습니다. public/config.js의 API 서버 주소를 확인해주세요.");
+    throw new Error("API 서버에서 JSON 응답을 받지 못했습니다. 잠시 후 다시 시도해주세요.");
   }
 
   const payload = await response.json();

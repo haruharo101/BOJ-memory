@@ -18,23 +18,6 @@ Vercel에서는 `public/` 정적 파일과 `api/` 서버리스 함수를 함께 
 2. Framework Preset은 `Other`로 둡니다.
 3. Build Command는 비워두거나 기본값을 사용합니다.
 4. Output Directory도 비워둡니다.
-5. 배포 후 `https://boj-memory.vercel.app` 또는 Vercel에서 발급된 도메인으로 접속합니다.
+5. 배포 후 `https://boj-memory.vercel.app`로 접속합니다.
 
-Vercel로 접속하면 프론트엔드는 같은 도메인의 `/api/memory`, `/api/image`를 사용합니다. GitHub Pages에서 접속하는 경우에는 `public/config.js`에 설정된 Vercel API 주소를 사용합니다.
-
-## GitHub Pages 배포
-
-이 저장소에는 `public/` 디렉터리를 GitHub Pages로 배포하는 GitHub Actions workflow가 포함되어 있습니다.
-
-1. 저장소에 push합니다.
-2. GitHub 저장소의 `Settings > Pages`로 이동합니다.
-3. `Source`를 `GitHub Actions`로 설정합니다.
-4. `Deploy GitHub Pages` workflow가 끝날 때까지 기다립니다.
-
-GitHub Pages는 정적 호스팅이라 `server.js`를 실행할 수 없습니다. 검색 기능은 `/api/memory`, 이미지 저장은 `/api/image`가 필요하므로 전체 기능을 Pages에서 사용하려면 API를 Vercel에 배포해야 합니다.
-
-Vercel 프로젝트 도메인이 `https://boj-memory.vercel.app`이 아니라면 `public/config.js`의 값을 실제 Vercel 주소로 바꾸면 됩니다.
-
-```js
-window.BOJ_MEMORY_API_BASE_URL = window.location.hostname.endsWith("github.io") ? "https://your-vercel-app.vercel.app" : "";
-```
+프론트엔드는 같은 도메인의 `/api/memory`, `/api/image`를 사용합니다. 별도 API 서버 주소를 공개하지 않으며, API는 `https://boj-memory.vercel.app`에서 온 브라우저 요청만 허용합니다.
