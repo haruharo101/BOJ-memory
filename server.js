@@ -28,9 +28,7 @@ const rateLimitWindowMs = 60 * 1000;
 const memoryRateLimitMax = 24;
 const imageRateLimitMax = 120;
 const rateLimitMaxKeys = 1000;
-const productionOrigin = "https://boj-memory.vercel.app";
 const allowedFrontendOrigins = new Set([
-  productionOrigin,
   "http://localhost:5173",
   "http://localhost:5174",
   "http://127.0.0.1:5173",
@@ -72,8 +70,23 @@ function requestSourceOrigin(req) {
   return originFromHeader(req.headers.origin) || originFromHeader(req.headers.referer);
 }
 
-function isAllowedFrontendOrigin(origin) {
+function requestOrigin(req) {
+  const host = req.headers.host;
+  if (typeof host !== "string" || !host) return null;
+
+  const forwardedProto = req.headers["x-forwarded-proto"];
+  const proto = typeof forwardedProto === "string" && forwardedProto
+    ? forwardedProto.split(",")[0].trim()
+    : host.startsWith("localhost") || host.startsWith("127.0.0.1")
+      ? "http"
+      : "https";
+
+  return `${proto}://${host}`;
+}
+
+function isAllowedFrontendOrigin(req, origin) {
   if (!origin) return true;
+  if (origin === requestOrigin(req)) return true;
   if (allowedFrontendOrigins.has(origin)) return true;
 
   try {
@@ -87,7 +100,7 @@ function isAllowedFrontendOrigin(origin) {
 function corsHeaders(req, extraHeaders = {}) {
   const origin = originFromHeader(req.headers.origin);
   const headers = { ...extraHeaders };
-  if (origin && isAllowedFrontendOrigin(origin)) {
+  if (origin && isAllowedFrontendOrigin(req, origin)) {
     headers["access-control-allow-origin"] = origin;
     headers["vary"] = headers.vary ? `${headers.vary}, Origin` : "Origin";
   }
@@ -96,7 +109,7 @@ function corsHeaders(req, extraHeaders = {}) {
 
 function validateFrontendRequest(req, res) {
   const origin = requestSourceOrigin(req);
-  if (isAllowedFrontendOrigin(origin)) return true;
+  if (isAllowedFrontendOrigin(req, origin)) return true;
 
   res.writeHead(403, {
     "content-type": "text/plain; charset=utf-8",
