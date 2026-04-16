@@ -1125,10 +1125,11 @@ function drawRatingPair(context, user, stats, x, y, options = {}) {
   const overSize = options.overSize ?? 20;
   const valueOffset = options.valueOffset ?? 39;
   const align = options.align ?? "left";
+  const overOffset = options.overOffset ?? 0;
   const totalWidth = acWidth + columnGap + overWidth;
   const startX = align === "right" ? x - totalWidth : x;
   const acX = align === "right" ? startX + acWidth : startX;
-  const overX = align === "right" ? x : startX + acWidth + columnGap;
+  const overX = align === "right" ? x : startX + acWidth + columnGap + overOffset;
   const textAlign = align === "right" ? "right" : "left";
   const overGradientX = align === "right" ? overX - overWidth : overX;
 
@@ -1262,7 +1263,10 @@ async function createProfileCanvas(user, stats, topProblems, tier, classText, me
     textAlign,
   );
 
-  drawRatingPair(context, user, stats, textX, 389, { align: textAlign });
+  drawRatingPair(context, user, stats, textX, 389, {
+    align: textAlign,
+    overOffset: isRightLayout ? 0 : 18,
+  });
   const ratingTierItems = [
     {
       text: tier.name,
