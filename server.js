@@ -12,6 +12,26 @@ const bojBaseUrl = "https://www.acmicpc.net";
 const readerBaseUrl = "https://r.jina.ai/http://r.jina.ai/http://";
 const imageProxyAllowedHosts = new Set(["static.solved.ac", "ui-avatars.com"]);
 const imageProxyMaxBytes = 5 * 1024 * 1024;
+const upstreamJsonMaxBytes = 2 * 1024 * 1024;
+const upstreamTextMaxBytes = 3 * 1024 * 1024;
+const appContentSecurityPolicy = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
+  "font-src 'self' https://cdn.jsdelivr.net",
+  "img-src 'self' data: blob: https://static.solved.ac https://ui-avatars.com",
+  "connect-src 'self'",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+].join("; ");
+const baseSecurityHeaders = {
+  "x-content-type-options": "nosniff",
+  "referrer-policy": "strict-origin-when-cross-origin",
+  "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+  "x-frame-options": "DENY",
+};
 const imageContentTypesByExtension = new Map([
   [".avif", "image/avif"],
   [".gif", "image/gif"],
@@ -55,6 +75,20 @@ const contentTypes = {
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
 };
+
+function securityHeaders(extraHeaders = {}) {
+  return {
+    ...baseSecurityHeaders,
+    ...extraHeaders,
+  };
+}
+
+function appSecurityHeaders(extraHeaders = {}) {
+  return securityHeaders({
+    "content-security-policy": appContentSecurityPolicy,
+    ...extraHeaders,
+  });
+}
 
 function originFromHeader(value) {
   if (typeof value !== "string" || !value) return null;
@@ -112,6 +146,7 @@ function validateFrontendRequest(req, res) {
   if (isAllowedFrontendOrigin(req, origin)) return true;
 
   res.writeHead(403, {
+    ...securityHeaders(),
     "content-type": "text/plain; charset=utf-8",
     "cache-control": "no-store",
   });
@@ -122,20 +157,20 @@ function validateFrontendRequest(req, res) {
 function handleApiOptions(req, res) {
   if (!validateFrontendRequest(req, res)) return;
 
-  res.writeHead(204, corsHeaders(req, {
+  res.writeHead(204, corsHeaders(req, securityHeaders({
     "access-control-allow-methods": "GET, OPTIONS",
     "access-control-allow-headers": "content-type",
     "access-control-max-age": "86400",
-  }));
+  })));
   res.end();
 }
 
 function sendJson(req, res, status, payload) {
   const body = JSON.stringify(payload);
-  res.writeHead(status, corsHeaders(req, {
+  res.writeHead(status, corsHeaders(req, securityHeaders({
     "content-type": "application/json; charset=utf-8",
     "cache-control": "no-store",
-  }));
+  })));
   res.end(body);
 }
 
@@ -233,6 +268,22 @@ async function readBodyWithLimit(response, maxBytes) {
   return Buffer.concat(chunks, total);
 }
 
+async function readTextWithLimit(response, maxBytes) {
+  return (await readBodyWithLimit(response, maxBytes)).toString("utf8");
+}
+
+async function readJsonWithLimit(response, maxBytes, fallbackMessage) {
+  const text = await readTextWithLimit(response, maxBytes);
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    const error = new Error(fallbackMessage);
+    error.status = 502;
+    throw error;
+  }
+}
+
 function imageContentTypeFromPath(pathname) {
   return imageContentTypesByExtension.get(extname(pathname).toLowerCase()) || null;
 }
@@ -242,7 +293,7 @@ async function proxyImageRequest(req, res) {
 
   const key = `${clientKey(req)}:image`;
   if (!checkRateLimit(imageRateLimits, key, imageRateLimitMax, rateLimitWindowMs)) {
-    res.writeHead(429, corsHeaders(req, { "content-type": "text/plain; charset=utf-8" }));
+    res.writeHead(429, corsHeaders(req, securityHeaders({ "content-type": "text/plain; charset=utf-8" })));
     res.end("Too many requests");
     return;
   }
@@ -251,7 +302,7 @@ async function proxyImageRequest(req, res) {
   const imageUrl = requestUrl.searchParams.get("url");
 
   if (!imageUrl) {
-    res.writeHead(400, corsHeaders(req, { "content-type": "text/plain; charset=utf-8" }));
+    res.writeHead(400, corsHeaders(req, securityHeaders({ "content-type": "text/plain; charset=utf-8" })));
     res.end("Missing image url");
     return;
   }
@@ -260,13 +311,13 @@ async function proxyImageRequest(req, res) {
   try {
     target = new URL(imageUrl);
   } catch {
-    res.writeHead(400, corsHeaders(req, { "content-type": "text/plain; charset=utf-8" }));
+    res.writeHead(400, corsHeaders(req, securityHeaders({ "content-type": "text/plain; charset=utf-8" })));
     res.end("Invalid image url");
     return;
   }
 
   if (target.protocol !== "https:" || !imageProxyAllowedHosts.has(target.hostname)) {
-    res.writeHead(400, corsHeaders(req, { "content-type": "text/plain; charset=utf-8" }));
+    res.writeHead(400, corsHeaders(req, securityHeaders({ "content-type": "text/plain; charset=utf-8" })));
     res.end("Unsupported image url");
     return;
   }
@@ -280,7 +331,7 @@ async function proxyImageRequest(req, res) {
     });
 
     if (!response.ok) {
-      res.writeHead(response.status, corsHeaders(req, { "content-type": "text/plain; charset=utf-8" }));
+      res.writeHead(response.status, corsHeaders(req, securityHeaders({ "content-type": "text/plain; charset=utf-8" })));
       res.end("Image request failed");
       return;
     }
@@ -291,19 +342,20 @@ async function proxyImageRequest(req, res) {
       ? upstreamContentType
       : inferredContentType;
     if (!contentType) {
-      res.writeHead(415, corsHeaders(req, { "content-type": "text/plain; charset=utf-8" }));
+      res.writeHead(415, corsHeaders(req, securityHeaders({ "content-type": "text/plain; charset=utf-8" })));
       res.end("Unsupported image response");
       return;
     }
 
     const body = await readBodyWithLimit(response, imageProxyMaxBytes);
-    res.writeHead(200, corsHeaders(req, {
+    res.writeHead(200, corsHeaders(req, securityHeaders({
+      "content-security-policy": "default-src 'none'; script-src 'none'; object-src 'none'; sandbox",
       "content-type": contentType,
       "cache-control": "public, max-age=86400",
-    }));
+    })));
     res.end(body);
   } catch (error) {
-    res.writeHead(error.status || 502, corsHeaders(req, { "content-type": "text/plain; charset=utf-8" }));
+    res.writeHead(error.status || 502, corsHeaders(req, securityHeaders({ "content-type": "text/plain; charset=utf-8" })));
     res.end(error.status === 413 ? "Image is too large" : "Image proxy failed");
   }
 }
@@ -348,7 +400,7 @@ async function fetchSolvedDirect(url) {
     throw error;
   }
 
-  return response.json();
+  return readJsonWithLimit(response, upstreamJsonMaxBytes, "solved.ac API 응답을 해석하지 못했습니다.");
 }
 
 async function fetchSolvedThroughReader(url) {
@@ -365,7 +417,7 @@ async function fetchSolvedThroughReader(url) {
     throw error;
   }
 
-  const text = await response.text();
+  const text = await readTextWithLimit(response, upstreamTextMaxBytes);
   const marker = "Markdown Content:";
   const jsonStart = text.indexOf(marker);
   const jsonText = jsonStart >= 0 ? text.slice(jsonStart + marker.length).trim() : text.trim();
@@ -471,7 +523,7 @@ async function fetchBojProfileStats(handle) {
     throw error;
   }
 
-  return parseBojStats(await response.text());
+  return parseBojStats(await readTextWithLimit(response, upstreamTextMaxBytes));
 }
 
 function getTableCells(rowHtml) {
@@ -548,7 +600,7 @@ async function fetchBojLanguageStats(handle) {
     throw error;
   }
 
-  return parseBojLanguageStats(await response.text());
+  return parseBojLanguageStats(await readTextWithLimit(response, upstreamTextMaxBytes));
 }
 
 function normalizeProblemList(payload) {
@@ -663,7 +715,7 @@ async function serveStatic(req, res) {
   try {
     pathname = decodeURIComponent(url.pathname);
   } catch {
-    res.writeHead(400);
+    res.writeHead(400, securityHeaders({ "content-type": "text/plain; charset=utf-8" }));
     res.end("Bad request");
     return;
   }
@@ -672,24 +724,24 @@ async function serveStatic(req, res) {
   const filePath = safePath === "/" ? join(publicDir, "index.html") : join(publicDir, safePath);
 
   if (!filePath.startsWith(publicDir)) {
-    res.writeHead(403);
+    res.writeHead(403, securityHeaders({ "content-type": "text/plain; charset=utf-8" }));
     res.end("Forbidden");
     return;
   }
 
   try {
     const body = await readFile(filePath);
-    res.writeHead(200, {
+    res.writeHead(200, appSecurityHeaders({
       "content-type": contentTypes[extname(filePath)] || "application/octet-stream",
       "cache-control": "no-store",
-    });
+    }));
     res.end(body);
   } catch {
     const fallback = await readFile(join(publicDir, "index.html"));
-    res.writeHead(200, {
+    res.writeHead(200, appSecurityHeaders({
       "content-type": contentTypes[".html"],
       "cache-control": "no-store",
-    });
+    }));
     res.end(fallback);
   }
 }
@@ -713,7 +765,7 @@ const server = createServer((req, res) => {
   serveStatic(req, res);
 });
 
-export { corsHeaders, handleApiOptions, handleMemoryRequest, proxyImageRequest, validateFrontendRequest };
+export { corsHeaders, handleApiOptions, handleMemoryRequest, proxyImageRequest, securityHeaders, validateFrontendRequest };
 
 if (process.argv[1] && resolve(process.argv[1]) === __filename) {
   server.listen(port, () => {

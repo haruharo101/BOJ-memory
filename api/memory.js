@@ -1,4 +1,4 @@
-import { corsHeaders, handleApiOptions, handleMemoryRequest, validateFrontendRequest } from "../server.js";
+import { corsHeaders, handleApiOptions, handleMemoryRequest, securityHeaders, validateFrontendRequest } from "../server.js";
 
 export default async function handler(req, res) {
   if (req.method === "OPTIONS") {
@@ -9,10 +9,10 @@ export default async function handler(req, res) {
   if (!validateFrontendRequest(req, res)) return;
 
   if (req.method !== "GET") {
-    res.writeHead(405, corsHeaders(req, {
+    res.writeHead(405, corsHeaders(req, securityHeaders({
       "allow": "GET, OPTIONS",
       "content-type": "text/plain; charset=utf-8",
-    }));
+    })));
     res.end("Method not allowed");
     return;
   }

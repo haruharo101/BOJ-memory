@@ -95,6 +95,15 @@ function animateWheelScroll() {
   wheelScrollFrame = requestAnimationFrame(frame);
 }
 
+function cancelWheelScroll() {
+  if (wheelScrollFrame) {
+    cancelAnimationFrame(wheelScrollFrame);
+  }
+  wheelScrollFrame = 0;
+  wheelScrollTarget = window.scrollY;
+  document.documentElement.classList.remove("is-wheel-smoothing");
+}
+
 function handleSmoothWheel(event) {
   if (event.defaultPrevented || event.ctrlKey || event.metaKey) return;
 
@@ -2009,6 +2018,7 @@ function renderStoryNav(categories) {
       item.type = "button";
       item.dataset.navCategory = category;
       item.addEventListener("click", () => {
+        cancelWheelScroll();
         storyTargetForCategory(category)?.scrollIntoView({
           behavior: "smooth",
           block: "start",
