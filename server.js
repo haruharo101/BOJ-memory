@@ -25,6 +25,9 @@ function sendJson(res, status, payload) {
   res.writeHead(status, {
     "content-type": "application/json; charset=utf-8",
     "cache-control": "no-store",
+    "access-control-allow-origin": "*",
+    "access-control-allow-methods": "GET, OPTIONS",
+    "access-control-allow-headers": "content-type",
   });
   res.end(body);
 }
@@ -421,6 +424,17 @@ async function serveStatic(req, res) {
 }
 
 const server = createServer((req, res) => {
+  if (req.method === "OPTIONS") {
+    res.writeHead(204, {
+      "access-control-allow-origin": "*",
+      "access-control-allow-methods": "GET, OPTIONS",
+      "access-control-allow-headers": "content-type",
+      "access-control-max-age": "86400",
+    });
+    res.end();
+    return;
+  }
+
   if (req.url?.startsWith("/api/memory")) {
     handleMemoryRequest(req, res);
     return;
