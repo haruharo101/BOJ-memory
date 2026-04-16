@@ -196,6 +196,16 @@ function stripHtml(value) {
   return decodeHtml(value.replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim();
 }
 
+const ignoredBojStatLabels = new Set(["codeforces", "atcoder", "topcoder", "학교/회사"]);
+
+function normalizeBojStatLabel(label) {
+  return label.toLowerCase().replace(/\s+/g, "");
+}
+
+function shouldIgnoreBojStat(label) {
+  return ignoredBojStatLabels.has(normalizeBojStatLabel(label));
+}
+
 function parseBojStats(html) {
   const table = html.match(/<table[^>]*id=["']statics["'][\s\S]*?<\/table>/i)?.[0];
   if (!table) return [];
@@ -207,6 +217,8 @@ function parseBojStats(html) {
   while ((match = rowPattern.exec(table))) {
     const labelHtml = match[1];
     const label = stripHtml(match[1]);
+    if (shouldIgnoreBojStat(label)) continue;
+
     const textValue = stripHtml(match[2]);
     const numberText = textValue.match(/[\d,]+/)?.[0];
     if (!numberText) continue;
