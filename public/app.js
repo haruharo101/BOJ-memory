@@ -22,6 +22,7 @@ const profileRenderScale = 2;
 const reportPageWidth = 1400;
 const reportPageHeight = 900;
 const reportRenderScale = 2;
+const canvasFontFamily = "Pretendard, system-ui, sans-serif";
 
 function startMemoryGraph(canvas) {
   if (!canvas) return;
@@ -265,6 +266,105 @@ function startMemoryGraph(canvas) {
 
 function formatNumber(value) {
   return numberFormatter.format(Number(value || 0));
+}
+
+function formatOverRating(value) {
+  if (value === undefined || value === null || value === "") return "--";
+  return (Number(value) / 10).toLocaleString("ko-KR", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  });
+}
+
+const overRatingGradientBands = [
+  {
+    minimum: 160000,
+    css:
+      "linear-gradient(135deg, rgb(29, 255, 255), rgb(11, 176, 255), rgb(248, 71, 255), rgb(234, 13, 0), rgb(255, 251, 0), rgb(32, 216, 0))",
+    stops: [
+      [0, "rgb(29, 255, 255)"],
+      [0.2, "rgb(11, 176, 255)"],
+      [0.4, "rgb(248, 71, 255)"],
+      [0.6, "rgb(234, 13, 0)"],
+      [0.8, "rgb(255, 251, 0)"],
+      [1, "rgb(32, 216, 0)"],
+    ],
+  },
+  {
+    minimum: 150000,
+    css:
+      "linear-gradient(135deg, rgb(126, 226, 179), rgb(107, 200, 254), rgb(145, 243, 127), rgb(255, 241, 39), rgb(255, 183, 92), rgb(253, 176, 172), rgb(255, 183, 92), rgb(255, 241, 39), rgb(145, 243, 127), rgb(107, 200, 254))",
+    stops: [
+      [0, "rgb(126, 226, 179)"],
+      [0.111, "rgb(107, 200, 254)"],
+      [0.222, "rgb(145, 243, 127)"],
+      [0.333, "rgb(255, 241, 39)"],
+      [0.444, "rgb(255, 183, 92)"],
+      [0.555, "rgb(253, 176, 172)"],
+      [0.666, "rgb(255, 183, 92)"],
+      [0.777, "rgb(255, 241, 39)"],
+      [0.888, "rgb(145, 243, 127)"],
+      [1, "rgb(107, 200, 254)"],
+    ],
+  },
+  {
+    minimum: 140000,
+    css:
+      "linear-gradient(135deg, rgb(255, 207, 95), rgb(255, 194, 80) 28%, rgb(255, 255, 102) 31%, rgb(255, 255, 109), rgb(255, 209, 109), rgb(255, 255, 84) 58%, rgb(255, 183, 74) 64%, rgb(255, 180, 67), rgb(255, 255, 255))",
+    stops: [
+      [0, "rgb(255, 207, 95)"],
+      [0.28, "rgb(255, 194, 80)"],
+      [0.31, "rgb(255, 255, 102)"],
+      [0.44, "rgb(255, 255, 109)"],
+      [0.52, "rgb(255, 209, 109)"],
+      [0.58, "rgb(255, 255, 84)"],
+      [0.64, "rgb(255, 183, 74)"],
+      [0.82, "rgb(255, 180, 67)"],
+      [1, "rgb(255, 255, 255)"],
+    ],
+  },
+  {
+    minimum: 130000,
+    css:
+      "linear-gradient(135deg, rgb(207, 215, 247), rgb(127, 145, 249), rgb(127, 190, 249) 45%, rgb(160, 239, 255) 47%, rgb(98, 233, 248), rgb(252, 242, 130))",
+    stops: [
+      [0, "rgb(207, 215, 247)"],
+      [0.25, "rgb(127, 145, 249)"],
+      [0.45, "rgb(127, 190, 249)"],
+      [0.47, "rgb(160, 239, 255)"],
+      [0.68, "rgb(98, 233, 248)"],
+      [1, "rgb(252, 242, 130)"],
+    ],
+  },
+  {
+    minimum: 120000,
+    css:
+      "linear-gradient(135deg, rgb(247, 226, 207), rgb(249, 164, 127), rgb(249, 164, 127) 45%, rgb(255, 225, 160) 47%, rgb(248, 128, 98), rgb(252, 173, 130))",
+    stops: [
+      [0, "rgb(247, 226, 207)"],
+      [0.25, "rgb(249, 164, 127)"],
+      [0.45, "rgb(249, 164, 127)"],
+      [0.47, "rgb(255, 225, 160)"],
+      [0.68, "rgb(248, 128, 98)"],
+      [1, "rgb(252, 173, 130)"],
+    ],
+  },
+];
+
+function overRatingGradientBand(value) {
+  const numericValue = Number(value || 0);
+  return overRatingGradientBands.find((band) => numericValue >= band.minimum) ?? null;
+}
+
+function createOverRatingCanvasGradient(context, value, x, y, width, height, fallback = "#ffffff") {
+  const band = overRatingGradientBand(value);
+  if (!band) return fallback;
+
+  const gradient = context.createLinearGradient(x, y, x + width, y + height);
+  for (const [offset, color] of band.stops) {
+    gradient.addColorStop(offset, color);
+  }
+  return gradient;
 }
 
 function tierInfo(tier) {
@@ -614,7 +714,7 @@ function createLanguageStatCard(language) {
 
 function drawOverviewText(context, text, x, y, options = {}) {
   context.fillStyle = options.color ?? "#ffffff";
-  context.font = `${options.weight ?? 800} ${options.size ?? 42}px ${options.family ?? "Inter, system-ui, sans-serif"}`;
+  context.font = `${options.weight ?? 800} ${options.size ?? 42}px ${options.family ?? canvasFontFamily}`;
   context.textAlign = options.align ?? "left";
   context.textBaseline = options.baseline ?? "alphabetic";
   if (options.maxWidth) {
@@ -627,10 +727,26 @@ function drawOverviewText(context, text, x, y, options = {}) {
 
 function measureTextWidth(context, text, options = {}) {
   context.save();
-  context.font = `${options.weight ?? 800} ${options.size ?? 42}px ${options.family ?? "Inter, system-ui, sans-serif"}`;
+  context.font = `${options.weight ?? 800} ${options.size ?? 42}px ${options.family ?? canvasFontFamily}`;
   const width = context.measureText(text).width;
   context.restore();
   return width;
+}
+
+async function ensureCanvasFonts() {
+  if (!document.fonts) return;
+
+  try {
+    await Promise.all([
+      document.fonts.load(`500 14px ${canvasFontFamily}`),
+      document.fonts.load(`700 14px ${canvasFontFamily}`),
+      document.fonts.load(`800 24px ${canvasFontFamily}`),
+      document.fonts.load(`950 48px ${canvasFontFamily}`),
+      document.fonts.ready,
+    ]);
+  } catch {
+    // Canvas export can safely fall back to system fonts if the CDN is unavailable.
+  }
 }
 
 function fitCanvasText(context, text, maxWidth, options = {}) {
@@ -644,15 +760,76 @@ function fitCanvasText(context, text, maxWidth, options = {}) {
   return { ...options, size, maxWidth };
 }
 
-function drawOverviewStat(context, label, value, x, y, width) {
+function wrapCanvasText(context, text, maxWidth, options = {}) {
+  const words = String(text || "").split(/\s+/).filter(Boolean);
+  if (!words.length) return [""];
+
+  const lines = [];
+  let currentLine = "";
+
+  for (const word of words) {
+    const nextLine = currentLine ? `${currentLine} ${word}` : word;
+    if (currentLine && measureTextWidth(context, nextLine, options) > maxWidth) {
+      lines.push(currentLine);
+      currentLine = word;
+      continue;
+    }
+
+    currentLine = nextLine;
+  }
+
+  if (currentLine) lines.push(currentLine);
+  return lines;
+}
+
+function drawWrappedCanvasText(context, text, x, y, maxWidth, options = {}) {
+  let size = options.size ?? 14;
+  const minimumSize = options.minimumSize ?? 10;
+  const maxLines = options.maxLines ?? 2;
+  let textOptions = { ...options, size };
+  let lines = wrapCanvasText(context, text, maxWidth, textOptions);
+
+  while (size > minimumSize && lines.length > maxLines) {
+    size -= 1;
+    textOptions = { ...options, size };
+    lines = wrapCanvasText(context, text, maxWidth, textOptions);
+  }
+
+  if (lines.length > maxLines) {
+    lines = lines.slice(0, maxLines);
+    const lastIndex = lines.length - 1;
+    while (
+      lines[lastIndex].length > 1 &&
+      measureTextWidth(context, `${lines[lastIndex]}...`, { ...textOptions, size }) > maxWidth
+    ) {
+      lines[lastIndex] = lines[lastIndex].slice(0, -1).trimEnd();
+    }
+    lines[lastIndex] = `${lines[lastIndex]}...`;
+  }
+
+  const lineHeight = textOptions.lineHeight ?? Math.round(size * 1.28);
+  lines.forEach((line, index) => {
+    drawOverviewText(context, line, x, y + index * lineHeight, { ...textOptions, maxWidth: undefined });
+  });
+
+  return lines.length * lineHeight;
+}
+
+function drawOverviewStat(context, label, value, x, y, width, align = "left") {
+  const textX = align === "right" ? x + width : x;
   context.strokeStyle = "rgba(58, 176, 158, 0.42)";
   context.lineWidth = 2;
   context.beginPath();
   context.moveTo(x, y);
   context.lineTo(x + width, y);
   context.stroke();
-  drawOverviewText(context, label, x, y + 18, { color: "rgba(255,255,255,0.62)", size: 12, weight: 850 });
-  drawOverviewText(context, value, x, y + 44, { color: "#ffffff", size: 22, weight: 950 });
+  drawOverviewText(context, label, textX, y + 18, {
+    color: "rgba(255,255,255,0.62)",
+    size: 12,
+    weight: 850,
+    align,
+  });
+  drawOverviewText(context, value, textX, y + 44, { color: "#ffffff", size: 22, weight: 950, align });
 }
 
 function proxiedImageUrl(url) {
@@ -902,6 +1079,57 @@ function drawInlineText(context, items, x, y, gap = 10) {
   }
 }
 
+function drawInlineTextRight(context, items, rightX, y, gap = 10) {
+  const width = items.reduce((total, item, index) => {
+    const itemWidth = measureTextWidth(context, item.text, item.options);
+    return total + itemWidth + (index ? gap : 0);
+  }, 0);
+
+  drawInlineText(context, items, rightX - width, y, gap);
+}
+
+function drawRatingPair(context, user, stats, x, y, options = {}) {
+  const columnGap = options.columnGap ?? 6;
+  const acWidth = options.acWidth ?? 108;
+  const overWidth = options.overWidth ?? 120;
+  const labelSize = options.labelSize ?? 13;
+  const ratingSize = options.ratingSize ?? 38;
+  const overSize = options.overSize ?? 20;
+  const valueOffset = options.valueOffset ?? 39;
+  const align = options.align ?? "left";
+  const totalWidth = acWidth + columnGap + overWidth;
+  const startX = align === "right" ? x - totalWidth : x;
+  const acX = align === "right" ? startX + acWidth : startX;
+  const overX = align === "right" ? x : startX + acWidth + columnGap;
+  const textAlign = align === "right" ? "right" : "left";
+  const overGradientX = align === "right" ? overX - overWidth : overX;
+
+  drawOverviewText(context, "AC RATING", acX, y, {
+    color: "rgba(255,255,255,0.76)",
+    size: labelSize,
+    weight: 950,
+    align: textAlign,
+  });
+  drawOverviewText(context, "OVER RATING", overX, y, {
+    color: "rgba(255,255,255,0.58)",
+    size: Math.max(9, labelSize - 2),
+    weight: 950,
+    align: textAlign,
+  });
+  drawOverviewText(context, formatNumber(stats.rating), acX, y + valueOffset, {
+    color: tierColor(user.tier),
+    size: ratingSize,
+    weight: 950,
+    align: textAlign,
+  });
+  drawOverviewText(context, formatOverRating(user.overRating), overX, y + valueOffset, {
+    color: createOverRatingCanvasGradient(context, user.overRating, overGradientX, y + valueOffset - 37, overWidth, 44),
+    size: overSize,
+    weight: 950,
+    align: textAlign,
+  });
+}
+
 function canvasToBlob(canvas, type = "image/png", quality) {
   return new Promise((resolve) => canvas.toBlob(resolve, type, quality));
 }
@@ -923,7 +1151,9 @@ function concatBytes(chunks) {
   return bytes;
 }
 
-async function createProfileCanvas(user, stats, topProblems, tier, classText, media) {
+async function createProfileCanvas(user, stats, topProblems, tier, classText, media, profileLayout = "left") {
+  await ensureCanvasFonts();
+
   const { canvas, context, width, height } = createScaledCanvas(profileImageWidth, profileImageHeight, profileRenderScale);
   const [backgroundImage, profileImage, badgeImage] = await Promise.all([
     loadCanvasImage(media.backgroundUrl),
@@ -935,45 +1165,77 @@ async function createProfileCanvas(user, stats, topProblems, tier, classText, me
   drawProfileImageGrid(context, width, height);
   drawProfileImageNodes(context, width, height, hashString(user.handle));
 
-  const leftX = 74;
-  drawRoundedImage(context, profileImage, leftX, 86, 92, 92, 8, "cover");
-  drawRoundedImage(context, badgeImage, leftX + 110, 130, 40, 40, 7, "contain");
+  const isRightLayout = profileLayout === "right";
+  const contentRight = 926;
+  const contentX = isRightLayout ? contentRight - 150 : 74;
+  const textX = isRightLayout ? contentRight : contentX;
+  const metaX = 74;
+  const handleMaxWidth = 560;
+  const statWidth = 118;
+  const statGap = 156;
+  const ratingPairWidth = 108 + 6 + 120;
+  const statStartX = isRightLayout ? contentRight - (statGap * 2 + statWidth) : contentX;
+  const topGridX = isRightLayout ? contentRight - ratingPairWidth - 270 : contentX + 232;
+  const rankingSize = 13;
+  const textAlign = isRightLayout ? "right" : "left";
 
-  drawOverviewText(context, user.handle, leftX, 232, fitCanvasText(context, user.handle, 560, {
+  drawRoundedImage(context, profileImage, contentX, 86, 92, 92, 8, "cover");
+  drawRoundedImage(context, badgeImage, contentX + 110, 130, 40, 40, 7, "contain");
+
+  drawOverviewText(context, user.handle, textX, 232, fitCanvasText(context, user.handle, handleMaxWidth, {
     color: "#ffffff",
     size: 50,
     minimumSize: 34,
     weight: 950,
+    align: textAlign,
   }));
-  drawOverviewText(context, user.bio || "one last solved.ac snapshot", leftX, 260, {
+  drawWrappedCanvasText(context, user.bio || "one last solved.ac snapshot", textX, 260, handleMaxWidth, {
     color: "rgba(255,255,255,0.74)",
     size: 14,
-    weight: 700,
-    maxWidth: 560,
+    minimumSize: 10,
+    maxLines: 2,
+    lineHeight: 17,
+    weight: 500,
+    align: textAlign,
   });
 
-  drawOverviewText(context, `SOLVED.AC RANKING #${formatNumber(user.rank || 0)}`, leftX, 294, {
+  drawOverviewText(context, `SOLVED.AC RANKING #${formatNumber(user.rank || 0)}`, textX, 294, {
     color: "rgba(255,255,255,0.72)",
-    size: 13,
+    size: rankingSize,
     weight: 950,
+    maxWidth: handleMaxWidth,
+    align: textAlign,
   });
-  drawOverviewText(context, `BOJ RANKING #${media.bojRank ? formatNumber(media.bojRank) : "--"}`, leftX + 218, 294, {
+  drawOverviewText(context, `BOJ RANKING #${media.bojRank ? formatNumber(media.bojRank) : "--"}`, textX, 312, {
     color: "rgba(255,255,255,0.72)",
-    size: 13,
+    size: rankingSize,
     weight: 950,
+    maxWidth: handleMaxWidth,
+    align: textAlign,
   });
 
-  drawOverviewStat(context, "푼 문제 수", formatNumber(stats.solvedCount), leftX, 318, 118);
-  drawOverviewStat(context, "기여한 문제 수", formatNumber(stats.contributionCount), leftX + 156, 318, 118);
-  drawOverviewStat(context, "라이벌 수", formatNumber(stats.rivalCount), leftX + 312, 318, 118);
+  drawOverviewStat(context, "푼 문제 수", formatNumber(stats.solvedCount), statStartX, 318, statWidth, textAlign);
+  drawOverviewStat(
+    context,
+    "기여한 문제 수",
+    formatNumber(stats.contributionCount),
+    statStartX + statGap,
+    318,
+    statWidth,
+    textAlign,
+  );
+  drawOverviewStat(
+    context,
+    "라이벌 수",
+    formatNumber(stats.rivalCount),
+    statStartX + statGap * 2,
+    318,
+    statWidth,
+    textAlign,
+  );
 
-  drawOverviewText(context, "AC Rating", leftX, 389, { color: "rgba(255,255,255,0.76)", size: 13, weight: 950 });
-  drawOverviewText(context, formatNumber(stats.rating), leftX, 428, {
-    color: tierColor(user.tier),
-    size: 38,
-    weight: 950,
-  });
-  drawInlineText(context, [
+  drawRatingPair(context, user, stats, textX, 389, { align: textAlign });
+  const ratingTierItems = [
     {
       text: tier.name,
       options: fitCanvasText(context, tier.name, 120, {
@@ -992,16 +1254,21 @@ async function createProfileCanvas(user, stats, topProblems, tier, classText, me
         weight: 900,
       }),
     },
-  ], leftX, 454);
-  drawProfileRatingDots(context, topProblems, leftX + 188, 398);
+  ];
+  if (isRightLayout) {
+    drawInlineTextRight(context, ratingTierItems, textX, 454);
+  } else {
+    drawInlineText(context, ratingTierItems, textX, 454);
+  }
+  drawProfileRatingDots(context, topProblems, topGridX, 398);
 
-  drawOverviewText(context, `배경 : ${media.backgroundName}`, leftX, 552, {
+  drawOverviewText(context, `배경 : ${media.backgroundName}`, metaX, 552, {
     color: "rgba(255,255,255,0.72)",
     size: 11,
     weight: 850,
     maxWidth: 580,
   });
-  drawOverviewText(context, `뱃지 : ${media.badgeName}`, leftX, 576, {
+  drawOverviewText(context, `뱃지 : ${media.badgeName}`, metaX, 576, {
     color: "rgba(255,255,255,0.72)",
     size: 11,
     weight: 850,
@@ -1011,9 +1278,9 @@ async function createProfileCanvas(user, stats, topProblems, tier, classText, me
   return canvas;
 }
 
-async function createProfileReportPage(backgroundImage, user, stats, topProblems, tier, classText, media) {
+async function createProfileReportPage(backgroundImage, user, stats, topProblems, tier, classText, media, profileLayout) {
   const { canvas, context, width, height } = createScaledCanvas(reportPageWidth, reportPageHeight, reportRenderScale);
-  const profileCanvas = await createProfileCanvas(user, stats, topProblems, tier, classText, media);
+  const profileCanvas = await createProfileCanvas(user, stats, topProblems, tier, classText, media, profileLayout);
 
   drawProfileImageBackground(context, backgroundImage, width, height);
   drawProfileImageGrid(context, width, height);
@@ -1118,10 +1385,14 @@ function createClassReportPage(backgroundImage, user, classStats) {
 function createRatingReportPage(backgroundImage, user, stats, topProblems, tier, classText) {
   const { canvas, context } = createReportPage(backgroundImage, "AC RATING", "solved.ac rating", hashString(`${user.handle}:rating`));
 
-  drawOverviewText(context, formatNumber(stats.rating), 82, 350, {
-    color: tierColor(user.tier),
-    size: 76,
-    weight: 950,
+  drawRatingPair(context, user, stats, 82, 264, {
+    columnGap: 86,
+    acWidth: 210,
+    overWidth: 220,
+    labelSize: 18,
+    ratingSize: 76,
+    overSize: 36,
+    valueOffset: 86,
   });
   drawInlineText(context, [
     {
@@ -1308,9 +1579,20 @@ function createLanguageReportPages(backgroundImage, user, languageStats) {
   return pages;
 }
 
-async function createFullReportCanvases(user, stats, topProblems, tier, classText, media, reportData) {
+async function createFullReportCanvases(user, stats, topProblems, tier, classText, media, reportData, profileLayout = "left") {
+  await ensureCanvasFonts();
+
   const backgroundImage = await loadCanvasImage(media.backgroundUrl);
-  const profileCanvas = await createProfileReportPage(backgroundImage, user, stats, topProblems, tier, classText, media);
+  const profileCanvas = await createProfileReportPage(
+    backgroundImage,
+    user,
+    stats,
+    topProblems,
+    tier,
+    classText,
+    media,
+    profileLayout,
+  );
 
   return [
     profileCanvas,
@@ -1397,15 +1679,24 @@ async function createPdfBlobFromCanvases(canvases) {
   return new Blob([concatBytes(chunks)], { type: "application/pdf" });
 }
 
-async function downloadProfileImage(user, stats, topProblems, tier, classText, media) {
-  const canvas = await createProfileCanvas(user, stats, topProblems, tier, classText, media);
+async function downloadProfileImage(user, stats, topProblems, tier, classText, media, profileLayout = "left") {
+  const canvas = await createProfileCanvas(user, stats, topProblems, tier, classText, media, profileLayout);
   const blob = await canvasToBlob(canvas);
   if (!blob) return;
   downloadBlob(blob, `BOJ memory - ${user.handle}.png`);
 }
 
-async function downloadProfilePdf(user, stats, topProblems, tier, classText, media, reportData) {
-  const canvases = await createFullReportCanvases(user, stats, topProblems, tier, classText, media, reportData);
+async function downloadProfilePdf(user, stats, topProblems, tier, classText, media, reportData, profileLayout = "left") {
+  const canvases = await createFullReportCanvases(
+    user,
+    stats,
+    topProblems,
+    tier,
+    classText,
+    media,
+    reportData,
+    profileLayout,
+  );
   const blob = await createPdfBlobFromCanvases(canvases);
   if (!blob) return;
   downloadBlob(blob, `BOJ memory - ${user.handle}.pdf`);
@@ -1414,6 +1705,8 @@ async function downloadProfilePdf(user, stats, topProblems, tier, classText, med
 function createOverviewPanel(user, stats, topProblems, tier, classText, media, reportData) {
   const overviewPanel = createStoryPanel("overview");
   overviewPanel.section.classList.add("overview-story-panel");
+  let profileLayout = "left";
+
   overviewPanel.inner.append(
     createElement("p", "story-value", "overview"),
     createElement("p", "story-detail", "SNS에 올릴 1000 x 600 프로필 이미지를 저장할 수 있습니다."),
@@ -1426,7 +1719,7 @@ function createOverviewPanel(user, stats, topProblems, tier, classText, media, r
     saveButton.disabled = true;
     saveButton.textContent = "이미지 만드는 중";
     try {
-      await downloadProfileImage(user, stats, topProblems, tier, classText, media);
+      await downloadProfileImage(user, stats, topProblems, tier, classText, media, profileLayout);
     } finally {
       saveButton.disabled = false;
       saveButton.textContent = "내 프로필 이미지로 만들기";
@@ -1439,7 +1732,7 @@ function createOverviewPanel(user, stats, topProblems, tier, classText, media, r
     pdfButton.disabled = true;
     pdfButton.textContent = "PDF 만드는 중";
     try {
-      await downloadProfilePdf(user, stats, topProblems, tier, classText, media, reportData);
+      await downloadProfilePdf(user, stats, topProblems, tier, classText, media, reportData, profileLayout);
     } finally {
       pdfButton.disabled = false;
       pdfButton.textContent = "전체 PDF로 만들기";
@@ -1453,7 +1746,35 @@ function createOverviewPanel(user, stats, topProblems, tier, classText, media, r
   });
 
   actions.append(saveButton, pdfButton, githubButton);
-  overviewPanel.inner.append(actions);
+
+  const layoutToggle = createElement("div", "overview-layout-toggle");
+  layoutToggle.append(createElement("span", "overview-layout-label", "저장 이미지/PDF 정렬"));
+  const layoutOptions = createElement("div", "overview-layout-options");
+  layoutOptions.setAttribute("role", "radiogroup");
+  layoutOptions.setAttribute("aria-label", "저장 이미지 정렬");
+
+  for (const [value, labelText] of [
+    ["left", "왼쪽 정렬"],
+    ["right", "오른쪽 정렬"],
+  ]) {
+    const id = `profile-layout-${user.handle}-${value}`;
+    const input = createElement("input");
+    input.type = "radio";
+    input.name = `profile-layout-${user.handle}`;
+    input.id = id;
+    input.value = value;
+    input.checked = value === profileLayout;
+    input.addEventListener("change", () => {
+      if (input.checked) profileLayout = value;
+    });
+
+    const option = createElement("label", "overview-layout-option", labelText);
+    option.htmlFor = id;
+    layoutOptions.append(input, option);
+  }
+
+  layoutToggle.append(layoutOptions);
+  overviewPanel.inner.append(actions, layoutToggle);
   return overviewPanel.section;
 }
 
@@ -1461,27 +1782,28 @@ function animateNumber(element) {
   const currentFrame = numberAnimationFrames.get(element);
   if (currentFrame) cancelAnimationFrame(currentFrame);
   const target = Number(element.dataset.target || 0);
+  const formatter = element.dataset.format === "over-rating" ? formatOverRating : formatNumber;
   const duration = Math.min(1250, 560 + String(Math.floor(target)).length * 110);
   const startTime = performance.now();
-  element.textContent = "0";
+  element.textContent = formatter(0);
 
   function frame(now) {
     const progress = Math.min((now - startTime) / duration, 1);
     const eased = progress === 1 ? 1 : 1 - 2 ** (-10 * progress);
     const value = Math.round(target * eased);
-    element.textContent = formatNumber(value);
+    element.textContent = formatter(value);
 
     if (progress < 1) {
       numberAnimationFrames.set(element, requestAnimationFrame(frame));
       return;
     }
 
-    element.textContent = formatNumber(target);
+    element.textContent = formatter(target);
     numberAnimationFrames.delete(element);
   }
 
   if (reducedMotion.matches) {
-    element.textContent = formatNumber(target);
+    element.textContent = formatter(target);
     return;
   }
 
@@ -1585,7 +1907,7 @@ function renderMemory(payload) {
     "search",
     "user id",
     "class",
-    "AC rating",
+    "AC RATING",
     "BOJ stats",
     "language stats",
     "overview",
@@ -1653,12 +1975,27 @@ function renderMemory(payload) {
   classPanel.inner.append(createElement("p", "story-value", classText), createClassProgress(classStats));
   story.append(classPanel.section);
 
-  const ratingPanel = createStoryPanel("AC rating");
+  const ratingPanel = createStoryPanel("AC RATING");
   const ratingValue = createElement("p", `story-value story-number tier-${tier.family}`, "0");
   ratingValue.dataset.target = String(stats.rating);
   ratingPanel.section.classList.add("rating-story-panel");
+  const ratingHeadline = createElement("div", "rating-headline");
+  const overRating = createElement("div", "over-rating-chip");
+  const overRatingBand = overRatingGradientBand(user.overRating);
+  if (overRatingBand) {
+    overRating.classList.add("has-over-rating-gradient");
+    overRating.style.setProperty("--over-rating-gradient", overRatingBand.css);
+  }
+  const overRatingValue = createElement("strong", "over-rating-value story-number", "0.0");
+  overRatingValue.dataset.target = String(user.overRating || 0);
+  overRatingValue.dataset.format = "over-rating";
+  overRating.append(
+    createElement("span", "over-rating-label", "OVER RATING"),
+    overRatingValue,
+  );
+  ratingHeadline.append(ratingValue, overRating);
   ratingPanel.inner.append(
-    ratingValue,
+    ratingHeadline,
     createElement("p", `story-detail tier-${tier.family}`, tier.name),
     createRatingDetails(user, stats, topProblems),
   );

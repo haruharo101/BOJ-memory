@@ -9,6 +9,18 @@ const port = Number(process.env.PORT || 5173);
 const solvedBaseUrl = "https://solved.ac/api/v3";
 const bojBaseUrl = "https://www.acmicpc.net";
 const readerBaseUrl = "https://r.jina.ai/http://r.jina.ai/http://";
+const imageProxyAllowedHosts = new Set(["static.solved.ac", "ui-avatars.com"]);
+const imageProxyMaxBytes = 5 * 1024 * 1024;
+const upstreamTimeoutMs = 9000;
+const memoryCacheTtlMs = 5 * 60 * 1000;
+const memoryCacheMaxEntries = 500;
+const rateLimitWindowMs = 60 * 1000;
+const memoryRateLimitMax = 24;
+const imageRateLimitMax = 120;
+const rateLimitMaxKeys = 1000;
+const memoryCache = new Map();
+const memoryRateLimits = new Map();
+const imageRateLimits = new Map();
 const contentTypes = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
@@ -32,7 +44,108 @@ function sendJson(res, status, payload) {
   res.end(body);
 }
 
+function clientKey(req) {
+  const forwardedFor = req.headers["x-forwarded-for"];
+  if (typeof forwardedFor === "string" && forwardedFor) {
+    return forwardedFor.split(",")[0].trim();
+  }
+
+  return req.socket.remoteAddress || "unknown";
+}
+
+function checkRateLimit(store, key, limit, windowMs) {
+  const now = Date.now();
+  if (store.size > rateLimitMaxKeys) {
+    pruneExpiringStore(store, "resetAt", now, rateLimitMaxKeys);
+  }
+
+  const current = store.get(key);
+
+  if (!current || now >= current.resetAt) {
+    store.set(key, { count: 1, resetAt: now + windowMs });
+    return true;
+  }
+
+  current.count += 1;
+  return current.count <= limit;
+}
+
+function pruneExpiringStore(store, expiresAtKey, now = Date.now(), maxEntries = Number.POSITIVE_INFINITY) {
+  for (const [key, value] of store) {
+    if (value?.[expiresAtKey] <= now) {
+      store.delete(key);
+    }
+  }
+
+  while (store.size > maxEntries) {
+    const oldestKey = store.keys().next().value;
+    if (oldestKey === undefined) break;
+    store.delete(oldestKey);
+  }
+}
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = upstreamTimeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function readBodyWithLimit(response, maxBytes) {
+  const contentLength = Number(response.headers.get("content-length") || 0);
+  if (contentLength > maxBytes) {
+    const error = new Error("Image is too large");
+    error.status = 413;
+    throw error;
+  }
+
+  const reader = response.body?.getReader();
+  if (!reader) {
+    const body = Buffer.from(await response.arrayBuffer());
+    if (body.byteLength > maxBytes) {
+      const error = new Error("Image is too large");
+      error.status = 413;
+      throw error;
+    }
+    return body;
+  }
+
+  const chunks = [];
+  let total = 0;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel();
+      const error = new Error("Image is too large");
+      error.status = 413;
+      throw error;
+    }
+
+    chunks.push(Buffer.from(value));
+  }
+
+  return Buffer.concat(chunks, total);
+}
+
 async function proxyImageRequest(req, res) {
+  const key = `${clientKey(req)}:image`;
+  if (!checkRateLimit(imageRateLimits, key, imageRateLimitMax, rateLimitWindowMs)) {
+    res.writeHead(429);
+    res.end("Too many requests");
+    return;
+  }
+
   const requestUrl = new URL(req.url, `http://${req.headers.host}`);
   const imageUrl = requestUrl.searchParams.get("url");
 
@@ -51,14 +164,14 @@ async function proxyImageRequest(req, res) {
     return;
   }
 
-  if (!["http:", "https:"].includes(target.protocol)) {
+  if (target.protocol !== "https:" || !imageProxyAllowedHosts.has(target.hostname)) {
     res.writeHead(400);
     res.end("Unsupported image url");
     return;
   }
 
   try {
-    const response = await fetch(target, {
+    const response = await fetchWithTimeout(target, {
       headers: {
         accept: "image/avif,image/webp,image/png,image/svg+xml,image/*,*/*;q=0.8",
         "user-agent": "goodbye-boj/0.1",
@@ -72,16 +185,22 @@ async function proxyImageRequest(req, res) {
     }
 
     const contentType = response.headers.get("content-type") || "application/octet-stream";
-    const body = Buffer.from(await response.arrayBuffer());
+    if (!contentType.toLowerCase().startsWith("image/")) {
+      res.writeHead(415);
+      res.end("Unsupported image response");
+      return;
+    }
+
+    const body = await readBodyWithLimit(response, imageProxyMaxBytes);
     res.writeHead(200, {
       "content-type": contentType,
       "cache-control": "public, max-age=86400",
       "access-control-allow-origin": "*",
     });
     res.end(body);
-  } catch {
-    res.writeHead(502);
-    res.end("Image proxy failed");
+  } catch (error) {
+    res.writeHead(error.status || 502);
+    res.end(error.status === 413 ? "Image is too large" : "Image proxy failed");
   }
 }
 
@@ -110,7 +229,7 @@ async function fetchSolved(path, params = {}) {
 }
 
 async function fetchSolvedDirect(url) {
-  const response = await fetch(url, {
+  const response = await fetchWithTimeout(url, {
     headers: {
       accept: "application/json",
       "x-solvedac-language": "ko",
@@ -129,7 +248,7 @@ async function fetchSolvedDirect(url) {
 }
 
 async function fetchSolvedThroughReader(url) {
-  const response = await fetch(`${readerBaseUrl}${url}`, {
+  const response = await fetchWithTimeout(`${readerBaseUrl}${url}`, {
     headers: {
       accept: "text/plain",
       "user-agent": "goodbye-boj/0.1",
@@ -234,7 +353,7 @@ function parseBojStats(html) {
 }
 
 async function fetchBojProfileStats(handle) {
-  const response = await fetch(`${bojBaseUrl}/user/${encodeURIComponent(handle)}`, {
+  const response = await fetchWithTimeout(`${bojBaseUrl}/user/${encodeURIComponent(handle)}`, {
     headers: {
       accept: "text/html,application/xhtml+xml",
       "accept-language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
@@ -311,7 +430,7 @@ function parseBojLanguageStats(html) {
 }
 
 async function fetchBojLanguageStats(handle) {
-  const response = await fetch(`${bojBaseUrl}/user/language/${encodeURIComponent(handle)}`, {
+  const response = await fetchWithTimeout(`${bojBaseUrl}/user/language/${encodeURIComponent(handle)}`, {
     headers: {
       accept: "text/html,application/xhtml+xml",
       "accept-language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
@@ -371,6 +490,23 @@ async function handleMemoryRequest(req, res) {
     return;
   }
 
+  const key = `${clientKey(req)}:memory`;
+  if (!checkRateLimit(memoryRateLimits, key, memoryRateLimitMax, rateLimitWindowMs)) {
+    sendJson(res, 429, { message: "요청이 너무 많습니다. 잠시 후 다시 시도해주세요." });
+    return;
+  }
+
+  const cacheKey = handle.toLowerCase();
+  if (memoryCache.size > memoryCacheMaxEntries) {
+    pruneExpiringStore(memoryCache, "expiresAt", Date.now(), memoryCacheMaxEntries);
+  }
+
+  const cached = memoryCache.get(cacheKey);
+  if (cached && Date.now() < cached.expiresAt) {
+    sendJson(res, 200, cached.payload);
+    return;
+  }
+
   try {
     const user = await fetchSolved("/user/show", { handle });
     const [badge, background, classStats, topProblems, bojStats, languageStats] = await Promise.all([
@@ -382,7 +518,7 @@ async function handleMemoryRequest(req, res) {
       fetchOptionalBojLanguageStats(handle),
     ]);
 
-    sendJson(res, 200, {
+    const payload = {
       fetchedAt: new Date().toISOString(),
       user,
       badge,
@@ -398,7 +534,16 @@ async function handleMemoryRequest(req, res) {
         rating: user.rating,
         classLabel: getClassLabel(user),
       },
+    };
+
+    memoryCache.set(cacheKey, {
+      expiresAt: Date.now() + memoryCacheTtlMs,
+      payload,
     });
+    if (memoryCache.size > memoryCacheMaxEntries) {
+      pruneExpiringStore(memoryCache, "expiresAt", Date.now(), memoryCacheMaxEntries);
+    }
+    sendJson(res, 200, payload);
   } catch (error) {
     sendJson(res, error.status || 500, {
       message: error.message || "잠시 후 다시 시도해주세요.",
@@ -408,7 +553,15 @@ async function handleMemoryRequest(req, res) {
 
 async function serveStatic(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
-  const pathname = decodeURIComponent(url.pathname);
+  let pathname;
+  try {
+    pathname = decodeURIComponent(url.pathname);
+  } catch {
+    res.writeHead(400);
+    res.end("Bad request");
+    return;
+  }
+
   const safePath = normalize(pathname).replace(/^(\.\.[/\\])+/, "");
   const filePath = safePath === "/" ? join(publicDir, "index.html") : join(publicDir, safePath);
 
