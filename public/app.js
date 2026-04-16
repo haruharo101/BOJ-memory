@@ -76,9 +76,7 @@ function startMemoryGraph(canvas) {
   }
 
   function targetNodeCount() {
-    const density = reducedMotion.matches ? 26000 : 18000;
-    const maximum = reducedMotion.matches ? 48 : 72;
-    return Math.min(maximum, Math.max(32, Math.floor((width * height) / density)));
+    return Math.min(72, Math.max(32, Math.floor((width * height) / 18000)));
   }
 
   function initializeGraph(time = 0) {
@@ -174,7 +172,7 @@ function startMemoryGraph(canvas) {
       node.targetAlpha = 0.5 + Math.random() * 0.36;
     }
 
-    const motionScale = reducedMotion.matches ? 0.38 : 1;
+    const motionScale = 1;
     node.x = node.baseX + Math.cos(time * 0.00038 * node.drift + node.phase) * 14 * motionScale;
     node.y = node.baseY + Math.sin(time * 0.00031 * node.drift + node.phase) * 14 * motionScale;
 
