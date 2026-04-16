@@ -11,9 +11,8 @@ const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 const apiBaseUrl = (window.BOJ_MEMORY_API_BASE_URL || "").replace(/\/$/, "");
 let storyObserver;
 let activeCategory = "";
-let storySnapTimer = 0;
-let isStorySnapping = false;
-let lastScrollY = window.scrollY;
+let wheelScrollTarget = window.scrollY;
+let wheelScrollFrame = 0;
 const numberAnimationFrames = new WeakMap();
 const panelResetTimers = new WeakMap();
 const tierAnimationTimers = new WeakMap();
@@ -34,8 +33,78 @@ function pinInitialSearchPosition() {
   requestAnimationFrame(() => {
     if (memory.childElementCount) return;
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
-    lastScrollY = window.scrollY;
   });
+}
+
+function maxScrollY() {
+  return Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+}
+
+function clampScrollTarget(value) {
+  return Math.min(maxScrollY(), Math.max(0, value));
+}
+
+function canScrollElement(element, deltaY) {
+  if (!element || element === document.body || element === document.documentElement) return false;
+  const style = getComputedStyle(element);
+  const overflowY = style.overflowY;
+  const canScroll = /(auto|scroll)/.test(overflowY) && element.scrollHeight > element.clientHeight + 1;
+  if (!canScroll) return false;
+  return deltaY > 0
+    ? element.scrollTop + element.clientHeight < element.scrollHeight - 1
+    : element.scrollTop > 1;
+}
+
+function hasScrollableAncestor(target, deltaY) {
+  let element = target instanceof Element ? target : null;
+  while (element) {
+    if (canScrollElement(element, deltaY)) return true;
+    element = element.parentElement;
+  }
+  return false;
+}
+
+function normalizedWheelDelta(event) {
+  const lineHeight = 40;
+  const pageHeight = window.innerHeight * 0.86;
+  if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) return event.deltaY * lineHeight;
+  if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) return event.deltaY * pageHeight;
+  return event.deltaY;
+}
+
+function animateWheelScroll() {
+  if (wheelScrollFrame) return;
+  document.documentElement.classList.add("is-wheel-smoothing");
+
+  function frame() {
+    const current = window.scrollY;
+    const distance = wheelScrollTarget - current;
+    const step = distance * 0.18;
+
+    if (Math.abs(distance) > 0.7) {
+      window.scrollTo(0, current + step);
+      wheelScrollFrame = requestAnimationFrame(frame);
+      return;
+    }
+
+    window.scrollTo(0, wheelScrollTarget);
+    document.documentElement.classList.remove("is-wheel-smoothing");
+    wheelScrollFrame = 0;
+  }
+
+  wheelScrollFrame = requestAnimationFrame(frame);
+}
+
+function handleSmoothWheel(event) {
+  if (event.defaultPrevented || event.ctrlKey || event.metaKey) return;
+
+  const deltaY = normalizedWheelDelta(event);
+  const isCoarseWheel = event.deltaMode !== WheelEvent.DOM_DELTA_PIXEL || Math.abs(deltaY) >= 48;
+  if (!isCoarseWheel || hasScrollableAncestor(event.target, deltaY)) return;
+
+  event.preventDefault();
+  wheelScrollTarget = clampScrollTarget((wheelScrollFrame ? wheelScrollTarget : window.scrollY) + deltaY * 1.08);
+  animateWheelScroll();
 }
 
 function startMemoryGraph(canvas) {
@@ -73,14 +142,16 @@ function startMemoryGraph(canvas) {
     return {
       firstIndex,
       secondIndex,
-      alpha: reducedMotion.matches ? targetAlpha : 0,
+      alpha: 0,
       targetAlpha,
       nextChange: delay + 1800 + Math.random() * 7200,
     };
   }
 
   function targetNodeCount() {
-    return reducedMotion.matches ? 34 : Math.min(72, Math.max(32, Math.floor((width * height) / 18000)));
+    const density = reducedMotion.matches ? 26000 : 18000;
+    const maximum = reducedMotion.matches ? 48 : 72;
+    return Math.min(maximum, Math.max(32, Math.floor((width * height) / density)));
   }
 
   function initializeGraph(time = 0) {
@@ -176,18 +247,17 @@ function startMemoryGraph(canvas) {
       node.targetAlpha = 0.5 + Math.random() * 0.36;
     }
 
-    if (!reducedMotion.matches) {
-      node.x = node.baseX + Math.cos(time * 0.00038 * node.drift + node.phase) * 14;
-      node.y = node.baseY + Math.sin(time * 0.00031 * node.drift + node.phase) * 14;
+    const motionScale = reducedMotion.matches ? 0.38 : 1;
+    node.x = node.baseX + Math.cos(time * 0.00038 * node.drift + node.phase) * 14 * motionScale;
+    node.y = node.baseY + Math.sin(time * 0.00031 * node.drift + node.phase) * 14 * motionScale;
 
-      if (pointer.active) {
-        const dx = pointer.x - node.x;
-        const dy = pointer.y - node.y;
-        const distance = Math.hypot(dx, dy);
-        if (distance < 170) {
-          node.x -= dx * 0.024 * (1 - distance / 170);
-          node.y -= dy * 0.024 * (1 - distance / 170);
-        }
+    if (pointer.active) {
+      const dx = pointer.x - node.x;
+      const dy = pointer.y - node.y;
+      const distance = Math.hypot(dx, dy);
+      if (distance < 170) {
+        node.x -= dx * 0.024 * (1 - distance / 170) * motionScale;
+        node.y -= dy * 0.024 * (1 - distance / 170) * motionScale;
       }
     }
   }
@@ -238,7 +308,7 @@ function startMemoryGraph(canvas) {
   function tick(time = 0) {
     context.clearRect(0, 0, width, height);
 
-    if (!reducedMotion.matches && time > nextGraphShift) {
+    if (time > nextGraphShift) {
       rebuildLinks(time);
     }
 
@@ -248,9 +318,7 @@ function startMemoryGraph(canvas) {
     drawLinks();
     drawNodes();
 
-    if (!reducedMotion.matches) {
-      animationFrame = requestAnimationFrame(tick);
-    }
+    animationFrame = requestAnimationFrame(tick);
   }
 
   function restart() {
@@ -261,7 +329,6 @@ function startMemoryGraph(canvas) {
 
   function handleResize() {
     resize();
-    if (reducedMotion.matches) tick(performance.now());
   }
 
   window.addEventListener("resize", handleResize, { passive: true });
@@ -1897,11 +1964,6 @@ function animateNumber(element) {
     numberAnimationFrames.delete(element);
   }
 
-  if (reducedMotion.matches) {
-    element.textContent = formatter(target);
-    return;
-  }
-
   numberAnimationFrames.set(element, requestAnimationFrame(frame));
 }
 
@@ -1937,66 +1999,6 @@ function categorySelector(category) {
 function storyTargetForCategory(category) {
   if (intro?.dataset.category === category) return intro;
   return memory.querySelector(`.story-panel${categorySelector(category)}`);
-}
-
-function storySnapTargets() {
-  return [intro, ...memory.querySelectorAll(".story-panel")].filter(Boolean);
-}
-
-function isScrollingInsideTallStorySection(targets) {
-  const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
-  for (const target of targets) {
-    const rect = target.getBoundingClientRect();
-    const isTallSection = rect.height > viewportHeight + 48;
-    const isInsideSection = rect.top < -28 && rect.bottom > viewportHeight * 0.35;
-    if (isTallSection && isInsideSection) return true;
-  }
-
-  return false;
-}
-
-function nearestStorySnapTarget() {
-  const targets = storySnapTargets();
-  if (targets.length < 2) return null;
-  if (isScrollingInsideTallStorySection(targets)) return null;
-
-  let nearest = null;
-  let nearestDistance = Number.POSITIVE_INFINITY;
-  for (const target of targets) {
-    const distance = Math.abs(target.getBoundingClientRect().top);
-    if (distance < nearestDistance) {
-      nearest = target;
-      nearestDistance = distance;
-    }
-  }
-
-  return nearestDistance > 28 ? nearest : null;
-}
-
-function snapToNearestStorySection() {
-  if (isStorySnapping) return;
-
-  const target = nearestStorySnapTarget();
-  if (!target) return;
-
-  isStorySnapping = true;
-  target.scrollIntoView({
-    behavior: reducedMotion.matches ? "auto" : "smooth",
-    block: "start",
-  });
-  window.setTimeout(() => {
-    isStorySnapping = false;
-  }, reducedMotion.matches ? 80 : 680);
-}
-
-function scheduleStorySnap() {
-  const currentScrollY = window.scrollY;
-  const moved = Math.abs(currentScrollY - lastScrollY) > 1;
-  lastScrollY = currentScrollY;
-  if (!moved || isStorySnapping) return;
-
-  window.clearTimeout(storySnapTimer);
-  storySnapTimer = window.setTimeout(snapToNearestStorySection, 280);
 }
 
 function renderStoryNav(categories) {
@@ -2059,7 +2061,7 @@ function setActiveCategory(category) {
       const tierTimer = setTimeout(() => {
         currentPanel.classList.add("has-tier-animation-played");
         tierAnimationTimers.delete(currentPanel);
-      }, reducedMotion.matches ? 0 : 1320);
+      }, 1320);
       tierAnimationTimers.set(currentPanel, tierTimer);
     }
   }
@@ -2237,7 +2239,7 @@ form.addEventListener("submit", async (event) => {
   }
 });
 
-window.addEventListener("scroll", scheduleStorySnap, { passive: true });
+window.addEventListener("wheel", handleSmoothWheel, { passive: false });
 window.addEventListener("pageshow", pinInitialSearchPosition);
 pinInitialSearchPosition();
 startMemoryGraph(graphCanvas);
