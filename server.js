@@ -689,6 +689,7 @@ async function handleMemoryRequest(req, res) {
         solvedCount: user.solvedCount,
         contributionCount: user.voteCount,
         rivalCount: user.rivalCount,
+        maxStreak: user.maxStreak,
         rating: user.rating,
         classLabel: getClassLabel(user),
       },

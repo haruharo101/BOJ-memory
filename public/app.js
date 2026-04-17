@@ -1225,10 +1225,18 @@ async function createProfileCanvas(user, stats, topProblems, tier, classText, me
   const textX = isRightLayout ? contentRight : contentX;
   const metaX = 74;
   const handleMaxWidth = 560;
-  const statWidth = 118;
-  const statGap = 156;
+  const overviewStats = [
+    ["푼 문제 수", formatNumber(stats.solvedCount)],
+    ["기여한 문제 수", formatNumber(stats.contributionCount)],
+    ["라이벌 수", formatNumber(stats.rivalCount)],
+    ["최장 스트릭", formatNumber(stats.maxStreak ?? user.maxStreak ?? 0)],
+  ];
+  const statWidth = 94;
+  const statGap = 118;
   const ratingPairWidth = 108 + 6 + 120;
-  const statStartX = isRightLayout ? contentRight - (statGap * 2 + statWidth) : contentX;
+  const statStartX = isRightLayout
+    ? contentRight - (statGap * (overviewStats.length - 1) + statWidth)
+    : contentX;
   const topGridX = isRightLayout ? contentRight - ratingPairWidth - 270 : contentX + 259;
   const rankingSize = 13;
   const textAlign = isRightLayout ? "right" : "left";
@@ -1268,25 +1276,9 @@ async function createProfileCanvas(user, stats, topProblems, tier, classText, me
     align: textAlign,
   });
 
-  drawOverviewStat(context, "푼 문제 수", formatNumber(stats.solvedCount), statStartX, 318, statWidth, textAlign);
-  drawOverviewStat(
-    context,
-    "기여한 문제 수",
-    formatNumber(stats.contributionCount),
-    statStartX + statGap,
-    318,
-    statWidth,
-    textAlign,
-  );
-  drawOverviewStat(
-    context,
-    "라이벌 수",
-    formatNumber(stats.rivalCount),
-    statStartX + statGap * 2,
-    318,
-    statWidth,
-    textAlign,
-  );
+  overviewStats.forEach(([label, value], index) => {
+    drawOverviewStat(context, label, value, statStartX + statGap * index, 318, statWidth, textAlign);
+  });
 
   drawRatingPair(context, user, stats, textX, 389, {
     align: textAlign,
@@ -2053,6 +2045,7 @@ function renderMemory(payload) {
     ["푼 문제 수", stats.solvedCount],
     ["기여한 문제 수", stats.contributionCount],
     ["라이벌 수", stats.rivalCount],
+    ["최장 스트릭", stats.maxStreak ?? user.maxStreak ?? 0],
   ];
 
   for (const [label, value] of summaryItems) {

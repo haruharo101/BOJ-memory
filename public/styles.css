@@ -366,10 +366,10 @@ input {
 }
 
 .user-summary-stats {
-  width: min(100%, 620px);
+  width: min(100%, 820px);
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
   margin-top: 4px;
 }
 
