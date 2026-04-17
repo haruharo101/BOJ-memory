@@ -119,7 +119,7 @@ function requestOrigin(req) {
 }
 
 function isAllowedFrontendOrigin(req, origin) {
-  if (!origin) return true;
+  if (!origin) return false;
   if (origin === requestOrigin(req)) return true;
   if (allowedFrontendOrigins.has(origin)) return true;
 

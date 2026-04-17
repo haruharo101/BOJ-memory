@@ -5,12 +5,15 @@ const memory = document.querySelector("#memory");
 const intro = document.querySelector(".intro");
 const graphCanvas = document.querySelector("#graph-flow");
 const storyNav = document.querySelector("#story-nav");
+const storyNavCurrent = document.querySelector("#story-nav-current");
 
 const numberFormatter = new Intl.NumberFormat("ko-KR");
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 const apiBaseUrl = (window.BOJ_MEMORY_API_BASE_URL || "").replace(/\/$/, "");
 let storyObserver;
 let activeCategory = "";
+let mobileNavTimer = 0;
+const storyIntersectionRatios = new WeakMap();
 const numberAnimationFrames = new WeakMap();
 const panelResetTimers = new WeakMap();
 const tierAnimationTimers = new WeakMap();
@@ -21,6 +24,43 @@ const reportPageWidth = 1400;
 const reportPageHeight = 900;
 const reportRenderScale = 2;
 const canvasFontFamily = "Pretendard, system-ui, sans-serif";
+const coverFontPresets = [
+  {
+    id: "pretendard",
+    label: "Pretendard",
+    meta: "기본",
+    family: "Pretendard, system-ui, sans-serif",
+    loadFamily: "Pretendard",
+  },
+  {
+    id: "a2z",
+    label: "A2z",
+    meta: "에이투지체",
+    family: "A2z, Pretendard, system-ui, sans-serif",
+    loadFamily: "A2z",
+  },
+  {
+    id: "paperozi",
+    label: "Paperozi",
+    meta: "Paperlogy",
+    family: "Paperozi, Pretendard, system-ui, sans-serif",
+    loadFamily: "Paperozi",
+  },
+  {
+    id: "gmarket",
+    label: "Gmarket Sans",
+    meta: "굵고 선명한",
+    family: "GmarketSans, Pretendard, system-ui, sans-serif",
+    loadFamily: "GmarketSans",
+  },
+];
+const coverFontPresetById = new Map(coverFontPresets.map((preset) => [preset.id, preset]));
+const coverFontWeights = [
+  { value: 500, label: "Medium" },
+  { value: 700, label: "Bold" },
+  { value: 800, label: "ExtraBold" },
+  { value: 900, label: "Black" },
+];
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -35,6 +75,61 @@ function createDefaultCoverOptions() {
     frontBlur: 0,
     frontOpacity: 62,
   };
+}
+
+function getCoverFontPreset(fontPresetId) {
+  return coverFontPresetById.get(fontPresetId) ?? coverFontPresetById.get("pretendard");
+}
+
+function normalizeTypographyRole(roleOptions, defaults) {
+  const font = coverFontPresetById.has(roleOptions?.font) ? roleOptions.font : defaults.font;
+  const weight = coverFontWeights.some((item) => item.value === Number(roleOptions?.weight))
+    ? Number(roleOptions.weight)
+    : defaults.weight;
+  return { font, weight };
+}
+
+function createDefaultTypographyOptions() {
+  return {
+    handle: { font: "pretendard", weight: 900 },
+    bio: { font: "pretendard", weight: 500 },
+    ranking: { font: "pretendard", weight: 700 },
+    statLabel: { font: "pretendard", weight: 700 },
+    statValue: { font: "pretendard", weight: 900 },
+    ratingLabel: { font: "pretendard", weight: 700 },
+    ratingValue: { font: "pretendard", weight: 900 },
+    tier: { font: "pretendard", weight: 900 },
+    meta: { font: "pretendard", weight: 500 },
+  };
+}
+
+function normalizeTypographyOptions(typography = {}) {
+  const defaults = createDefaultTypographyOptions();
+  return {
+    handle: normalizeTypographyRole(typography.handle, defaults.handle),
+    bio: normalizeTypographyRole(typography.bio, defaults.bio),
+    ranking: normalizeTypographyRole(typography.ranking, defaults.ranking),
+    statLabel: normalizeTypographyRole(typography.statLabel, defaults.statLabel),
+    statValue: normalizeTypographyRole(typography.statValue, defaults.statValue),
+    ratingLabel: normalizeTypographyRole(typography.ratingLabel, defaults.ratingLabel),
+    ratingValue: normalizeTypographyRole(typography.ratingValue, defaults.ratingValue),
+    tier: normalizeTypographyRole(typography.tier, defaults.tier),
+    meta: normalizeTypographyRole(typography.meta, defaults.meta),
+  };
+}
+
+function resolveTypography(typographyOptions = createDefaultTypographyOptions()) {
+  const normalized = normalizeTypographyOptions(typographyOptions);
+  return Object.fromEntries(
+    Object.entries(normalized).map(([key, value]) => [
+      key,
+      {
+        ...value,
+        family: getCoverFontPreset(value.font).family,
+        loadFamily: getCoverFontPreset(value.font).loadFamily,
+      },
+    ]),
+  );
 }
 
 function normalizeCoverOptions(coverOptions = {}) {
@@ -54,12 +149,14 @@ function normalizeProfileOptions(profileOptions = "left") {
   if (typeof profileOptions === "string") {
     return {
       layout: profileOptions === "right" ? "right" : "left",
+      typography: createDefaultTypographyOptions(),
       cover: createDefaultCoverOptions(),
     };
   }
 
   return {
     layout: profileOptions?.layout === "right" ? "right" : "left",
+    typography: normalizeTypographyOptions(profileOptions?.typography),
     cover: normalizeCoverOptions(profileOptions?.cover),
   };
 }
@@ -797,7 +894,7 @@ function createLanguageStatCard(language) {
 
 function drawOverviewText(context, text, x, y, options = {}) {
   context.fillStyle = options.color ?? "#ffffff";
-  context.font = `${options.weight ?? 800} ${options.size ?? 42}px ${options.family ?? canvasFontFamily}`;
+  context.font = `${options.weight ?? 800} ${options.size ?? 42}px ${options.family ?? context.__fontFamily ?? canvasFontFamily}`;
   context.textAlign = options.align ?? "left";
   context.textBaseline = options.baseline ?? "alphabetic";
   if (options.maxWidth) {
@@ -810,23 +907,28 @@ function drawOverviewText(context, text, x, y, options = {}) {
 
 function measureTextWidth(context, text, options = {}) {
   context.save();
-  context.font = `${options.weight ?? 800} ${options.size ?? 42}px ${options.family ?? canvasFontFamily}`;
+  context.font = `${options.weight ?? 800} ${options.size ?? 42}px ${options.family ?? context.__fontFamily ?? canvasFontFamily}`;
   const width = context.measureText(text).width;
   context.restore();
   return width;
 }
 
-async function ensureCanvasFonts() {
+async function ensureCanvasFonts(profileOptions = "left") {
   if (!document.fonts) return;
+  const normalizedProfile = normalizeProfileOptions(profileOptions);
+  const typography = resolveTypography(normalizedProfile.typography);
+  const loads = new Map();
+  for (const role of Object.values(typography)) {
+    loads.set(`${role.weight}:16:${role.loadFamily}`, `${role.weight} 16px ${role.loadFamily}`);
+    loads.set(`${role.weight}:48:${role.loadFamily}`, `${role.weight} 48px ${role.loadFamily}`);
+  }
 
   try {
     await Promise.all([
-      document.fonts.load(`500 14px ${canvasFontFamily}`),
-      document.fonts.load(`700 14px ${canvasFontFamily}`),
-      document.fonts.load(`800 24px ${canvasFontFamily}`),
-      document.fonts.load(`950 48px ${canvasFontFamily}`),
+      ...loads.values(),
+    ].map((descriptor) => document.fonts.load(descriptor)).concat([
       document.fonts.ready,
-    ]);
+    ]));
   } catch {
     // Canvas export can safely fall back to system fonts if the CDN is unavailable.
   }
@@ -898,7 +1000,7 @@ function drawWrappedCanvasText(context, text, x, y, maxWidth, options = {}) {
   return lines.length * lineHeight;
 }
 
-function drawOverviewStat(context, label, value, x, y, width, align = "left") {
+function drawOverviewStat(context, label, value, x, y, width, align = "left", styles = {}) {
   const textX = align === "right" ? x + width : x;
   context.strokeStyle = "rgba(58, 176, 158, 0.42)";
   context.lineWidth = 2;
@@ -909,10 +1011,17 @@ function drawOverviewStat(context, label, value, x, y, width, align = "left") {
   drawOverviewText(context, label, textX, y + 18, {
     color: "rgba(255,255,255,0.62)",
     size: 12,
-    weight: 850,
+    weight: styles.labelWeight ?? 850,
+    family: styles.labelFamily,
     align,
   });
-  drawOverviewText(context, value, textX, y + 44, { color: "#ffffff", size: 22, weight: 950, align });
+  drawOverviewText(context, value, textX, y + 44, {
+    color: "#ffffff",
+    size: 22,
+    weight: styles.valueWeight ?? 950,
+    family: styles.valueFamily,
+    align,
+  });
 }
 
 function proxiedImageUrl(url) {
@@ -1128,7 +1237,7 @@ function drawProfileImageNodes(context, width, height, seed) {
   }
 }
 
-function createScaledCanvas(width, height, scale = 1) {
+function createScaledCanvas(width, height, scale = 1, fontFamily = canvasFontFamily) {
   const canvas = document.createElement("canvas");
   canvas.width = Math.floor(width * scale);
   canvas.height = Math.floor(height * scale);
@@ -1136,6 +1245,7 @@ function createScaledCanvas(width, height, scale = 1) {
   context.scale(scale, scale);
   context.imageSmoothingEnabled = true;
   context.imageSmoothingQuality = "high";
+  context.__fontFamily = fontFamily;
   return { canvas, context, width, height };
 }
 
@@ -1209,23 +1319,28 @@ function drawRatingPair(context, user, stats, x, y, options = {}) {
   drawOverviewText(context, "AC RATING", acX, y, {
     color: "rgba(255,255,255,0.76)",
     size: labelSize,
-    weight: 950,
+    weight: options.labelWeight ?? 950,
+    family: options.labelFamily,
     align: textAlign,
   });
   drawOverviewText(context, "OVER RATING", overX, y, {
     color: "rgba(255,255,255,0.58)",
     size: Math.max(9, labelSize - 2),
-    weight: 950,
+    weight: options.labelWeight ?? 950,
+    family: options.labelFamily,
     align: textAlign,
   });
   drawOverviewText(context, formatNumber(stats.rating), acX, y + valueOffset, {
     color: tierColor(user.tier),
     size: ratingSize,
-    weight: 950,
+    weight: options.valueWeight ?? 950,
+    family: options.valueFamily,
     align: textAlign,
   });
   drawOverviewText(context, overRatingText, overX, y + valueOffset, {
     color: overGradient,
+    family: options.valueFamily,
+    weight: options.valueWeight ?? 950,
     ...overTextOptions,
   });
 }
@@ -1252,12 +1367,18 @@ function concatBytes(chunks) {
 }
 
 async function createProfileCanvas(user, stats, topProblems, tier, classText, media, profileOptions = "left") {
-  await ensureCanvasFonts();
+  await ensureCanvasFonts(profileOptions);
   const normalizedProfile = normalizeProfileOptions(profileOptions);
   const profileLayout = normalizedProfile.layout;
   const coverOptions = normalizedProfile.cover;
+  const typography = resolveTypography(normalizedProfile.typography);
 
-  const { canvas, context, width, height } = createScaledCanvas(profileImageWidth, profileImageHeight, profileRenderScale);
+  const { canvas, context, width, height } = createScaledCanvas(
+    profileImageWidth,
+    profileImageHeight,
+    profileRenderScale,
+    typography.bio.family,
+  );
   const [backgroundImage, profileImage, badgeImage] = await Promise.all([
     loadCanvasImage(media.backgroundUrl),
     loadCanvasImage(media.profileUrl),
@@ -1297,7 +1418,8 @@ async function createProfileCanvas(user, stats, topProblems, tier, classText, me
     color: "#ffffff",
     size: 50,
     minimumSize: 34,
-    weight: 950,
+    weight: typography.handle.weight,
+    family: typography.handle.family,
     align: textAlign,
   }));
   drawWrappedCanvasText(context, user.bio || "one last solved.ac snapshot", textX, 260, handleMaxWidth, {
@@ -1306,33 +1428,45 @@ async function createProfileCanvas(user, stats, topProblems, tier, classText, me
     minimumSize: 10,
     maxLines: 2,
     lineHeight: 17,
-    weight: 500,
+    weight: typography.bio.weight,
+    family: typography.bio.family,
     align: textAlign,
   });
 
   drawOverviewText(context, `SOLVED.AC RANKING #${formatNumber(user.rank || 0)}`, textX, 294, {
     color: "rgba(255,255,255,0.72)",
     size: rankingSize,
-    weight: 950,
+    weight: typography.ranking.weight,
+    family: typography.ranking.family,
     maxWidth: handleMaxWidth,
     align: textAlign,
   });
   drawOverviewText(context, `BOJ RANKING #${media.bojRank ? formatNumber(media.bojRank) : "--"}`, textX, 312, {
     color: "rgba(255,255,255,0.72)",
     size: rankingSize,
-    weight: 950,
+    weight: typography.ranking.weight,
+    family: typography.ranking.family,
     maxWidth: handleMaxWidth,
     align: textAlign,
   });
 
   overviewStats.forEach(([label, value], index) => {
-    drawOverviewStat(context, label, value, statStartX + statGap * index, 318, statWidth, textAlign);
+    drawOverviewStat(context, label, value, statStartX + statGap * index, 318, statWidth, textAlign, {
+      labelFamily: typography.statLabel.family,
+      labelWeight: typography.statLabel.weight,
+      valueFamily: typography.statValue.family,
+      valueWeight: typography.statValue.weight,
+    });
   });
 
   drawRatingPair(context, user, stats, textX, 389, {
     align: textAlign,
     overOffset: isRightLayout ? 0 : 18,
     overRightOffset: isRightLayout ? 27 : 0,
+    labelFamily: typography.ratingLabel.family,
+    labelWeight: typography.ratingLabel.weight,
+    valueFamily: typography.ratingValue.family,
+    valueWeight: typography.ratingValue.weight,
   });
   const ratingTierItems = [
     {
@@ -1341,7 +1475,8 @@ async function createProfileCanvas(user, stats, topProblems, tier, classText, me
         color: tierColor(user.tier),
         size: 16,
         minimumSize: 13,
-        weight: 900,
+        weight: typography.tier.weight,
+        family: typography.tier.family,
       }),
     },
     {
@@ -1350,7 +1485,8 @@ async function createProfileCanvas(user, stats, topProblems, tier, classText, me
         color: "rgba(255,255,255,0.8)",
         size: 16,
         minimumSize: 13,
-        weight: 900,
+        weight: typography.tier.weight,
+        family: typography.tier.family,
       }),
     },
   ];
@@ -1365,14 +1501,16 @@ async function createProfileCanvas(user, stats, topProblems, tier, classText, me
     drawOverviewText(context, `배경 : ${media.backgroundName}`, metaX, 552, {
       color: "rgba(255,255,255,0.72)",
       size: 11,
-      weight: 850,
+      weight: typography.meta.weight,
+      family: typography.meta.family,
       maxWidth: 580,
       align: textAlign,
     });
     drawOverviewText(context, `뱃지 : ${media.badgeName}`, metaX, 576, {
       color: "rgba(255,255,255,0.72)",
       size: 11,
-      weight: 850,
+      weight: typography.meta.weight,
+      family: typography.meta.family,
       maxWidth: 580,
       align: textAlign,
     });
@@ -1382,9 +1520,16 @@ async function createProfileCanvas(user, stats, topProblems, tier, classText, me
 }
 
 async function createProfileReportPage(backgroundImage, user, stats, topProblems, tier, classText, media, profileOptions) {
-  const { canvas, context, width, height } = createScaledCanvas(reportPageWidth, reportPageHeight, reportRenderScale);
+  const normalizedProfile = normalizeProfileOptions(profileOptions);
+  const typography = resolveTypography(normalizedProfile.typography);
+  const { canvas, context, width, height } = createScaledCanvas(
+    reportPageWidth,
+    reportPageHeight,
+    reportRenderScale,
+    typography.bio.family,
+  );
   const profileCanvas = await createProfileCanvas(user, stats, topProblems, tier, classText, media, profileOptions);
-  const { cover } = normalizeProfileOptions(profileOptions);
+  const { cover } = normalizedProfile;
 
   drawProfileImageBackground(context, backgroundImage, width, height, cover);
   drawProfileImageGrid(context, width, height);
@@ -1414,8 +1559,8 @@ function drawReportHeader(context, title, subtitle) {
   }
 }
 
-function createReportPage(backgroundImage, title, subtitle, seed) {
-  const { canvas, context, width, height } = createScaledCanvas(reportPageWidth, reportPageHeight, reportRenderScale);
+function createReportPage(backgroundImage, title, subtitle, seed, fontFamily = canvasFontFamily) {
+  const { canvas, context, width, height } = createScaledCanvas(reportPageWidth, reportPageHeight, reportRenderScale, fontFamily);
   drawReportBackground(context, backgroundImage, width, height);
   drawReportHeader(context, title, subtitle);
   return { canvas, context, width, height };
@@ -1432,8 +1577,14 @@ function drawReportMetric(context, label, value, x, y, width = 220) {
   drawOverviewText(context, value, x, y + 58, { color: "#ffffff", size: 32, weight: 950 });
 }
 
-function createClassReportPage(backgroundImage, user, classStats) {
-  const { canvas, context } = createReportPage(backgroundImage, "CLASS", "solved.ac class progress", hashString(`${user.handle}:class`));
+function createClassReportPage(backgroundImage, user, classStats, fontFamily = canvasFontFamily) {
+  const { canvas, context } = createReportPage(
+    backgroundImage,
+    "CLASS",
+    "solved.ac class progress",
+    hashString(`${user.handle}:class`),
+    fontFamily,
+  );
   const statByClass = new Map(classStats.map((entry) => [Number(entry.class), entry]));
 
   for (let classNumber = 1; classNumber <= 10; classNumber += 1) {
@@ -1486,8 +1637,14 @@ function createClassReportPage(backgroundImage, user, classStats) {
   return canvas;
 }
 
-function createRatingReportPage(backgroundImage, user, stats, topProblems, tier, classText) {
-  const { canvas, context } = createReportPage(backgroundImage, "AC RATING", "solved.ac rating", hashString(`${user.handle}:rating`));
+function createRatingReportPage(backgroundImage, user, stats, topProblems, tier, classText, fontFamily = canvasFontFamily) {
+  const { canvas, context } = createReportPage(
+    backgroundImage,
+    "AC RATING",
+    "solved.ac rating",
+    hashString(`${user.handle}:rating`),
+    fontFamily,
+  );
 
   drawRatingPair(context, user, stats, 82, 264, {
     columnGap: 86,
@@ -1562,12 +1719,13 @@ function drawBojReportStatsGrid(context, stats, startY) {
   }
 }
 
-function createBojReportPages(backgroundImage, user, bojStats) {
+function createBojReportPages(backgroundImage, user, bojStats, fontFamily = canvasFontFamily) {
   const emptyPage = () => createReportPage(
     backgroundImage,
     "BOJ STATS",
     `${user.handle} profile numbers`,
     hashString(`${user.handle}:boj`),
+    fontFamily,
   );
 
   if (!bojStats.length) {
@@ -1595,6 +1753,7 @@ function createBojReportPages(backgroundImage, user, bojStats) {
       "BOJ STATS",
       `${user.handle} profile numbers ${pageNumber}`,
       hashString(`${user.handle}:boj:${offset}`),
+      fontFamily,
     );
 
     if (isFirstPage) {
@@ -1644,13 +1803,14 @@ function drawLanguagePie(context, statuses, x, y, radius) {
   context.fill();
 }
 
-function createLanguageReportPages(backgroundImage, user, languageStats) {
+function createLanguageReportPages(backgroundImage, user, languageStats, fontFamily = canvasFontFamily) {
   if (!languageStats.length) {
     const { canvas, context } = createReportPage(
       backgroundImage,
       "LANGUAGE STATS",
       `${user.handle} languages`,
       hashString(`${user.handle}:language-empty`),
+      fontFamily,
     );
     drawOverviewText(context, "BOJ 언어 통계를 읽어오지 못했습니다.", 82, 220, {
       color: "rgba(255,255,255,0.72)",
@@ -1669,6 +1829,7 @@ function createLanguageReportPages(backgroundImage, user, languageStats) {
       "LANGUAGE STATS",
       `${user.handle} languages ${Math.floor(offset / perPage) + 1}`,
       hashString(`${user.handle}:language:${offset}`),
+      fontFamily,
     );
 
     const rowCount = Math.ceil(chunk.length / 2);
@@ -1713,7 +1874,9 @@ function createLanguageReportPages(backgroundImage, user, languageStats) {
 }
 
 async function createFullReportCanvases(user, stats, topProblems, tier, classText, media, reportData, profileOptions = "left") {
-  await ensureCanvasFonts();
+  await ensureCanvasFonts(profileOptions);
+  const normalizedProfile = normalizeProfileOptions(profileOptions);
+  const typography = resolveTypography(normalizedProfile.typography);
 
   const backgroundImage = await loadCanvasImage(media.backgroundUrl);
   const profileCanvas = await createProfileReportPage(
@@ -1729,10 +1892,10 @@ async function createFullReportCanvases(user, stats, topProblems, tier, classTex
 
   return [
     profileCanvas,
-    createClassReportPage(backgroundImage, user, reportData.classStats),
-    createRatingReportPage(backgroundImage, user, stats, topProblems, tier, classText),
-    ...createBojReportPages(backgroundImage, user, reportData.bojStats),
-    ...createLanguageReportPages(backgroundImage, user, reportData.languageStats),
+    createClassReportPage(backgroundImage, user, reportData.classStats, typography.bio.family),
+    createRatingReportPage(backgroundImage, user, stats, topProblems, tier, classText, typography.bio.family),
+    ...createBojReportPages(backgroundImage, user, reportData.bojStats, typography.bio.family),
+    ...createLanguageReportPages(backgroundImage, user, reportData.languageStats, typography.bio.family),
   ];
 }
 
@@ -1836,15 +1999,14 @@ async function downloadProfilePdf(user, stats, topProblems, tier, classText, med
 }
 
 function createOverviewPanel(user, stats, topProblems, tier, classText, media, reportData) {
-  const overviewPanel = createStoryPanel("overview");
+  const overviewPanel = createStoryPanel("save to file");
   overviewPanel.section.classList.add("overview-story-panel");
   const profileOptions = normalizeProfileOptions("left");
   let previewTimer = 0;
   let previewVersion = 0;
-  let previewUrl = "";
 
   overviewPanel.inner.append(
-    createElement("p", "story-value", "overview"),
+    createElement("p", "story-value", "Save to file"),
     createElement("p", "story-detail", "SNS에 올릴 2000 x 1200 프로필 이미지를 저장할 수 있고, 아래에서 표지 구성을 미리 보며 조절할 수 있습니다."),
   );
 
@@ -1875,7 +2037,7 @@ function createOverviewPanel(user, stats, topProblems, tier, classText, media, r
     }
   });
 
-  const githubButton = createElement("button", "overview-button", "Repo star");
+  const githubButton = createElement("button", "overview-button star", "★ Repo star");
   githubButton.type = "button";
   githubButton.addEventListener("click", () => {
     window.open("https://github.com/haruharo101/BOJ-memory", "_blank", "noopener,noreferrer");
@@ -1914,6 +2076,91 @@ function createOverviewPanel(user, stats, topProblems, tier, classText, media, r
 
   const controls = createElement("div", "overview-cover-controls");
   controls.append(createElement("p", "overview-cover-heading", "표지 커스터마이징"));
+  const editor = createElement("div", "overview-editor");
+  const controlColumn = createElement("div", "overview-control-column");
+  const previewColumn = createElement("div", "overview-preview-column");
+
+  const fontPanel = createElement("details", "overview-font-panel");
+  const fontSummary = createElement("summary", "overview-font-summary");
+  const fontSummaryCaret = createElement("span", "overview-font-caret", "▸");
+  fontSummaryCaret.setAttribute("aria-hidden", "true");
+  const fontSummaryTitle = createElement("strong", "overview-font-summary-title", "폰트 설정");
+  const fontResetButton = createElement("button", "overview-font-reset", "기본값");
+  fontResetButton.type = "button";
+  fontSummary.append(fontSummaryCaret, fontSummaryTitle, fontResetButton);
+  fontPanel.append(fontSummary);
+
+  const fontGroup = createElement("div", "overview-font-group");
+  const fontControls = [];
+
+  function createFontRoleRow(roleKey, titleText) {
+    const row = createElement("div", "overview-font-row");
+    row.append(createElement("strong", "overview-font-row-title", titleText));
+
+    const controlsRow = createElement("div", "overview-font-row-controls");
+    const familyField = createElement("label", "overview-font-field");
+    const familySelect = createElement("select", "overview-font-select");
+    for (const preset of coverFontPresets) {
+      const option = document.createElement("option");
+      option.value = preset.id;
+      option.textContent = preset.label;
+      option.style.fontFamily = preset.family;
+      if (profileOptions.typography[roleKey].font === preset.id) option.selected = true;
+      familySelect.append(option);
+    }
+    familySelect.addEventListener("change", () => {
+      profileOptions.typography[roleKey].font = familySelect.value;
+      schedulePreview();
+    });
+    familyField.append(familySelect);
+
+    const weightField = createElement("label", "overview-font-field");
+    const weightSelect = createElement("select", "overview-font-select");
+    for (const weight of coverFontWeights) {
+      const option = document.createElement("option");
+      option.value = String(weight.value);
+      option.textContent = weight.label;
+      if (profileOptions.typography[roleKey].weight === weight.value) option.selected = true;
+      weightSelect.append(option);
+    }
+    weightSelect.addEventListener("change", () => {
+      profileOptions.typography[roleKey].weight = Number(weightSelect.value);
+      schedulePreview();
+    });
+    weightField.append(weightSelect);
+
+    controlsRow.append(familyField, weightField);
+    row.append(controlsRow);
+    fontGroup.append(row);
+    fontControls.push({ roleKey, familySelect, weightSelect });
+  }
+
+  function syncTypographyControls() {
+    const normalizedTypography = normalizeTypographyOptions(profileOptions.typography);
+    for (const control of fontControls) {
+      control.familySelect.value = normalizedTypography[control.roleKey].font;
+      control.weightSelect.value = String(normalizedTypography[control.roleKey].weight);
+    }
+  }
+
+  fontResetButton.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    profileOptions.typography = createDefaultTypographyOptions();
+    syncTypographyControls();
+    schedulePreview();
+  });
+
+  createFontRoleRow("handle", "아이디");
+  createFontRoleRow("bio", "상태메시지");
+  createFontRoleRow("ranking", "랭킹");
+  createFontRoleRow("statLabel", "통계 라벨");
+  createFontRoleRow("statValue", "통계 값");
+  createFontRoleRow("ratingLabel", "레이팅 라벨");
+  createFontRoleRow("ratingValue", "레이팅 값");
+  createFontRoleRow("tier", "티어 / 클래스");
+  createFontRoleRow("meta", "배경 / 뱃지");
+  fontPanel.append(fontGroup);
 
   const showMetaRow = createElement("label", "overview-check");
   const showMetaInput = createElement("input");
@@ -2011,10 +2258,13 @@ function createOverviewPanel(user, stats, topProblems, tier, classText, media, r
     createElement("span", "overview-preview-size", "실제 저장 표지 기준"),
   );
   const previewFrame = createElement("div", "overview-preview-frame");
-  const previewImage = createElement("img", "overview-preview-image");
-  previewImage.alt = `${user.handle} 표지 미리보기`;
+  const previewCanvas = createElement("canvas", "overview-preview-canvas");
+  previewCanvas.width = profileImageWidth;
+  previewCanvas.height = profileImageHeight;
+  previewCanvas.setAttribute("aria-label", `${user.handle} 표지 미리보기`);
+  const previewContext = previewCanvas.getContext("2d");
   const previewStatus = createElement("p", "overview-preview-status", "미리보기를 준비하는 중입니다.");
-  previewFrame.append(previewImage);
+  previewFrame.append(previewCanvas);
   previewPanel.append(previewHead, previewFrame, previewStatus);
 
   async function refreshPreview() {
@@ -2031,16 +2281,16 @@ function createOverviewPanel(user, stats, topProblems, tier, classText, media, r
         media,
         {
           layout: profileOptions.layout,
+          typography: normalizeTypographyOptions(profileOptions.typography),
           cover: { ...profileOptions.cover },
         },
       );
-      const blob = await canvasToBlob(canvas, "image/jpeg", 0.94);
-      if (currentVersion !== previewVersion || !blob) return;
+      if (currentVersion !== previewVersion || !previewContext) return;
 
-      const nextUrl = URL.createObjectURL(blob);
-      previewImage.src = nextUrl;
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
-      previewUrl = nextUrl;
+      previewContext.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+      previewContext.imageSmoothingEnabled = true;
+      previewContext.imageSmoothingQuality = "high";
+      previewContext.drawImage(canvas, 0, 0, previewCanvas.width, previewCanvas.height);
       previewStatus.textContent = "지금 설정으로 저장됩니다.";
     } catch {
       if (currentVersion !== previewVersion) return;
@@ -2055,9 +2305,12 @@ function createOverviewPanel(user, stats, topProblems, tier, classText, media, r
     }, 140);
   }
 
-  controls.append(showMetaRow, backgroundModeGroup, sliders, previewPanel);
+  controls.append(fontPanel, showMetaRow, backgroundModeGroup, sliders);
   layoutToggle.append(layoutOptions);
-  overviewPanel.inner.append(actions, layoutToggle, controls);
+  controlColumn.append(actions, layoutToggle, controls);
+  previewColumn.append(previewPanel);
+  editor.append(controlColumn, previewColumn);
+  overviewPanel.inner.append(editor);
   syncFrontLayerState();
   schedulePreview();
   return overviewPanel.section;
@@ -2095,17 +2348,41 @@ function observeStory() {
   storyObserver = new IntersectionObserver(
     (entries) => {
       for (const entry of entries) {
-        if (!entry.isIntersecting) continue;
+        const ratio = entry.isIntersecting ? entry.intersectionRatio : 0;
+        storyIntersectionRatios.set(entry.target, ratio);
+        if (!entry.isIntersecting && entry.intersectionRatio < 0.02) continue;
 
         entry.target.classList.add("is-visible");
-        if (setActiveCategory(entry.target.dataset.category)) {
-          for (const number of entry.target.querySelectorAll(".story-number")) {
-            animateNumber(number);
-          }
+      }
+
+      const observedTargets = [intro, ...memory.querySelectorAll(".story-panel")].filter(Boolean);
+      let bestTarget = null;
+      let bestScore = 0;
+
+      for (const target of observedTargets) {
+        const ratio = storyIntersectionRatios.get(target) ?? 0;
+        if (ratio < 0.02) continue;
+
+        const rect = target.getBoundingClientRect();
+        const viewportCenter = window.innerHeight / 2;
+        const targetCenter = rect.top + rect.height / 2;
+        const centerDistance = Math.abs(viewportCenter - targetCenter);
+        const centerScore = Math.max(0, 1 - centerDistance / Math.max(window.innerHeight, 1));
+        const score = ratio * 100 + centerScore;
+
+        if (score > bestScore) {
+          bestScore = score;
+          bestTarget = target;
+        }
+      }
+
+      if (bestTarget && setActiveCategory(bestTarget.dataset.category)) {
+        for (const number of bestTarget.querySelectorAll(".story-number")) {
+          animateNumber(number);
         }
       }
     },
-    { threshold: 0.18 },
+    { threshold: [0.02, 0.08, 0.18] },
   );
 
   for (const panel of memory.querySelectorAll(".story-panel")) {
@@ -2140,15 +2417,41 @@ function renderStoryNav(categories) {
       return item;
     }),
   );
+  syncStoryNavState(activeCategory || categories[0] || "");
+}
+
+function syncStoryNavState(category) {
+  for (const item of storyNav.querySelectorAll(".story-nav-item")) {
+    item.classList.toggle("is-active", item.dataset.navCategory === category);
+  }
+
+  if (storyNavCurrent) {
+    storyNavCurrent.textContent = category || "";
+    storyNavCurrent.classList.toggle("is-visible", Boolean(category));
+  }
+}
+
+function scheduleStoryNavState(category) {
+  if (mobileNavTimer) {
+    clearTimeout(mobileNavTimer);
+    mobileNavTimer = 0;
+  }
+
+  if (window.innerWidth > 820) {
+    syncStoryNavState(category);
+    return;
+  }
+
+  mobileNavTimer = window.setTimeout(() => {
+    syncStoryNavState(category);
+    mobileNavTimer = 0;
+  }, 140);
 }
 
 function setActiveCategory(category) {
   const changed = activeCategory !== category;
   activeCategory = category;
-
-  for (const item of storyNav.querySelectorAll(".story-nav-item")) {
-    item.classList.toggle("is-active", item.dataset.navCategory === category);
-  }
+  scheduleStoryNavState(category);
 
   for (const panel of memory.querySelectorAll(".story-panel")) {
     if (panel.dataset.category === category) continue;
@@ -2210,7 +2513,7 @@ function renderMemory(payload) {
     "AC RATING",
     "BOJ stats",
     "language stats",
-    "overview",
+    "save to file",
   ];
 
   const story = createElement("article", "story");
