@@ -22,6 +22,48 @@ const reportPageHeight = 900;
 const reportRenderScale = 2;
 const canvasFontFamily = "Pretendard, system-ui, sans-serif";
 
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function createDefaultCoverOptions() {
+  return {
+    showMeta: true,
+    backgroundMode: "dual",
+    rearBlur: 12,
+    rearOpacity: 82,
+    frontBlur: 0,
+    frontOpacity: 62,
+  };
+}
+
+function normalizeCoverOptions(coverOptions = {}) {
+  const defaults = createDefaultCoverOptions();
+  const backgroundMode = coverOptions.backgroundMode === "rear" ? "rear" : "dual";
+  return {
+    showMeta: coverOptions.showMeta ?? defaults.showMeta,
+    backgroundMode,
+    rearBlur: clamp(Number(coverOptions.rearBlur ?? defaults.rearBlur), 0, 32),
+    rearOpacity: clamp(Number(coverOptions.rearOpacity ?? defaults.rearOpacity), 0, 100),
+    frontBlur: clamp(Number(coverOptions.frontBlur ?? defaults.frontBlur), 0, 24),
+    frontOpacity: clamp(Number(coverOptions.frontOpacity ?? defaults.frontOpacity), 0, 100),
+  };
+}
+
+function normalizeProfileOptions(profileOptions = "left") {
+  if (typeof profileOptions === "string") {
+    return {
+      layout: profileOptions === "right" ? "right" : "left",
+      cover: createDefaultCoverOptions(),
+    };
+  }
+
+  return {
+    layout: profileOptions?.layout === "right" ? "right" : "left",
+    cover: normalizeCoverOptions(profileOptions?.cover),
+  };
+}
+
 function pinInitialSearchPosition() {
   if (window.location.hash) return;
   if ("scrollRestoration" in history) {
@@ -948,7 +990,8 @@ function drawRoundedImage(context, image, x, y, width, height, radius, mode = "c
   context.stroke();
 }
 
-function drawProfileImageBackground(context, image, width, height) {
+function drawProfileImageBackground(context, image, width, height, options = {}) {
+  const coverOptions = normalizeCoverOptions(options);
   const baseGradient = context.createLinearGradient(0, 0, width, height);
   baseGradient.addColorStop(0, "#253237");
   baseGradient.addColorStop(0.55, "#3b444b");
@@ -958,15 +1001,18 @@ function drawProfileImageBackground(context, image, width, height) {
 
   if (image) {
     context.save();
-    context.globalAlpha = 0.82;
-    context.filter = "blur(12px)";
+    context.globalAlpha = coverOptions.rearOpacity / 100;
+    context.filter = `blur(${coverOptions.rearBlur}px)`;
     drawImageCover(context, image, -24, -24, width + 48, height + 48);
     context.restore();
 
-    context.save();
-    context.globalAlpha = 0.62;
-    drawImageContain(context, image, 0, 0, width, height);
-    context.restore();
+    if (coverOptions.backgroundMode === "dual") {
+      context.save();
+      context.globalAlpha = coverOptions.frontOpacity / 100;
+      context.filter = `blur(${coverOptions.frontBlur}px)`;
+      drawImageContain(context, image, 0, 0, width, height);
+      context.restore();
+    }
   }
 
   const shade = context.createLinearGradient(0, 0, width, height);
@@ -1205,8 +1251,11 @@ function concatBytes(chunks) {
   return bytes;
 }
 
-async function createProfileCanvas(user, stats, topProblems, tier, classText, media, profileLayout = "left") {
+async function createProfileCanvas(user, stats, topProblems, tier, classText, media, profileOptions = "left") {
   await ensureCanvasFonts();
+  const normalizedProfile = normalizeProfileOptions(profileOptions);
+  const profileLayout = normalizedProfile.layout;
+  const coverOptions = normalizedProfile.cover;
 
   const { canvas, context, width, height } = createScaledCanvas(profileImageWidth, profileImageHeight, profileRenderScale);
   const [backgroundImage, profileImage, badgeImage] = await Promise.all([
@@ -1215,7 +1264,7 @@ async function createProfileCanvas(user, stats, topProblems, tier, classText, me
     loadCanvasImage(media.badgeUrl),
   ]);
 
-  drawProfileImageBackground(context, backgroundImage, width, height);
+  drawProfileImageBackground(context, backgroundImage, width, height, coverOptions);
   drawProfileImageGrid(context, width, height);
   drawProfileImageNodes(context, width, height, hashString(user.handle));
 
@@ -1312,27 +1361,30 @@ async function createProfileCanvas(user, stats, topProblems, tier, classText, me
   }
   drawProfileRatingDots(context, topProblems, topGridX, 398);
 
-  drawOverviewText(context, `배경 : ${media.backgroundName}`, metaX, 552, {
-    color: "rgba(255,255,255,0.72)",
-    size: 11,
-    weight: 850,
-    maxWidth: 580,
-  });
-  drawOverviewText(context, `뱃지 : ${media.badgeName}`, metaX, 576, {
-    color: "rgba(255,255,255,0.72)",
-    size: 11,
-    weight: 850,
-    maxWidth: 580,
-  });
+  if (coverOptions.showMeta) {
+    drawOverviewText(context, `배경 : ${media.backgroundName}`, metaX, 552, {
+      color: "rgba(255,255,255,0.72)",
+      size: 11,
+      weight: 850,
+      maxWidth: 580,
+    });
+    drawOverviewText(context, `뱃지 : ${media.badgeName}`, metaX, 576, {
+      color: "rgba(255,255,255,0.72)",
+      size: 11,
+      weight: 850,
+      maxWidth: 580,
+    });
+  }
 
   return canvas;
 }
 
-async function createProfileReportPage(backgroundImage, user, stats, topProblems, tier, classText, media, profileLayout) {
+async function createProfileReportPage(backgroundImage, user, stats, topProblems, tier, classText, media, profileOptions) {
   const { canvas, context, width, height } = createScaledCanvas(reportPageWidth, reportPageHeight, reportRenderScale);
-  const profileCanvas = await createProfileCanvas(user, stats, topProblems, tier, classText, media, profileLayout);
+  const profileCanvas = await createProfileCanvas(user, stats, topProblems, tier, classText, media, profileOptions);
+  const { cover } = normalizeProfileOptions(profileOptions);
 
-  drawProfileImageBackground(context, backgroundImage, width, height);
+  drawProfileImageBackground(context, backgroundImage, width, height, cover);
   drawProfileImageGrid(context, width, height);
   drawProfileImageNodes(context, width, height, hashString(`${user.handle}:profile-report`));
 
@@ -1658,7 +1710,7 @@ function createLanguageReportPages(backgroundImage, user, languageStats) {
   return pages;
 }
 
-async function createFullReportCanvases(user, stats, topProblems, tier, classText, media, reportData, profileLayout = "left") {
+async function createFullReportCanvases(user, stats, topProblems, tier, classText, media, reportData, profileOptions = "left") {
   await ensureCanvasFonts();
 
   const backgroundImage = await loadCanvasImage(media.backgroundUrl);
@@ -1670,7 +1722,7 @@ async function createFullReportCanvases(user, stats, topProblems, tier, classTex
     tier,
     classText,
     media,
-    profileLayout,
+    profileOptions,
   );
 
   return [
@@ -1758,14 +1810,14 @@ async function createPdfBlobFromCanvases(canvases) {
   return new Blob([concatBytes(chunks)], { type: "application/pdf" });
 }
 
-async function downloadProfileImage(user, stats, topProblems, tier, classText, media, profileLayout = "left") {
-  const canvas = await createProfileCanvas(user, stats, topProblems, tier, classText, media, profileLayout);
+async function downloadProfileImage(user, stats, topProblems, tier, classText, media, profileOptions = "left") {
+  const canvas = await createProfileCanvas(user, stats, topProblems, tier, classText, media, profileOptions);
   const blob = await canvasToBlob(canvas);
   if (!blob) return;
   downloadBlob(blob, `BOJ memory - ${user.handle}.png`);
 }
 
-async function downloadProfilePdf(user, stats, topProblems, tier, classText, media, reportData, profileLayout = "left") {
+async function downloadProfilePdf(user, stats, topProblems, tier, classText, media, reportData, profileOptions = "left") {
   const canvases = await createFullReportCanvases(
     user,
     stats,
@@ -1774,7 +1826,7 @@ async function downloadProfilePdf(user, stats, topProblems, tier, classText, med
     classText,
     media,
     reportData,
-    profileLayout,
+    profileOptions,
   );
   const blob = await createPdfBlobFromCanvases(canvases);
   if (!blob) return;
@@ -1784,11 +1836,14 @@ async function downloadProfilePdf(user, stats, topProblems, tier, classText, med
 function createOverviewPanel(user, stats, topProblems, tier, classText, media, reportData) {
   const overviewPanel = createStoryPanel("overview");
   overviewPanel.section.classList.add("overview-story-panel");
-  let profileLayout = "left";
+  const profileOptions = normalizeProfileOptions("left");
+  let previewTimer = 0;
+  let previewVersion = 0;
+  let previewUrl = "";
 
   overviewPanel.inner.append(
     createElement("p", "story-value", "overview"),
-    createElement("p", "story-detail", "SNS에 올릴 2000 x 1200 프로필 이미지를 저장할 수 있습니다."),
+    createElement("p", "story-detail", "SNS에 올릴 2000 x 1200 프로필 이미지를 저장할 수 있고, 아래에서 표지 구성을 미리 보며 조절할 수 있습니다."),
   );
 
   const actions = createElement("div", "overview-actions");
@@ -1798,7 +1853,7 @@ function createOverviewPanel(user, stats, topProblems, tier, classText, media, r
     saveButton.disabled = true;
     saveButton.textContent = "이미지 만드는 중";
     try {
-      await downloadProfileImage(user, stats, topProblems, tier, classText, media, profileLayout);
+      await downloadProfileImage(user, stats, topProblems, tier, classText, media, profileOptions);
     } finally {
       saveButton.disabled = false;
       saveButton.textContent = "내 프로필 이미지로 만들기";
@@ -1811,7 +1866,7 @@ function createOverviewPanel(user, stats, topProblems, tier, classText, media, r
     pdfButton.disabled = true;
     pdfButton.textContent = "PDF 만드는 중";
     try {
-      await downloadProfilePdf(user, stats, topProblems, tier, classText, media, reportData, profileLayout);
+      await downloadProfilePdf(user, stats, topProblems, tier, classText, media, reportData, profileOptions);
     } finally {
       pdfButton.disabled = false;
       pdfButton.textContent = "전체 PDF로 만들기";
@@ -1842,9 +1897,12 @@ function createOverviewPanel(user, stats, topProblems, tier, classText, media, r
     input.name = `profile-layout-${user.handle}`;
     input.id = id;
     input.value = value;
-    input.checked = value === profileLayout;
+    input.checked = value === profileOptions.layout;
     input.addEventListener("change", () => {
-      if (input.checked) profileLayout = value;
+      if (input.checked) {
+        profileOptions.layout = value;
+        schedulePreview();
+      }
     });
 
     const option = createElement("label", "overview-layout-option", labelText);
@@ -1852,8 +1910,154 @@ function createOverviewPanel(user, stats, topProblems, tier, classText, media, r
     layoutOptions.append(input, option);
   }
 
+  const controls = createElement("div", "overview-cover-controls");
+  controls.append(createElement("p", "overview-cover-heading", "표지 커스터마이징"));
+
+  const showMetaRow = createElement("label", "overview-check");
+  const showMetaInput = createElement("input");
+  showMetaInput.type = "checkbox";
+  showMetaInput.checked = profileOptions.cover.showMeta;
+  showMetaInput.addEventListener("change", () => {
+    profileOptions.cover.showMeta = showMetaInput.checked;
+    schedulePreview();
+  });
+  showMetaRow.append(showMetaInput, createElement("span", "overview-check-label", "배경 / 뱃지 정보 표시"));
+
+  const backgroundModeGroup = createElement("div", "overview-layout-toggle");
+  backgroundModeGroup.append(createElement("span", "overview-layout-label", "표지 배경 구성"));
+  const backgroundModeOptions = createElement("div", "overview-layout-options");
+  backgroundModeOptions.setAttribute("role", "radiogroup");
+  backgroundModeOptions.setAttribute("aria-label", "표지 배경 구성");
+
+  for (const [value, labelText] of [
+    ["rear", "뒷배경만"],
+    ["dual", "앞 / 뒷배경"],
+  ]) {
+    const id = `profile-background-mode-${user.handle}-${value}`;
+    const input = createElement("input");
+    input.type = "radio";
+    input.name = `profile-background-mode-${user.handle}`;
+    input.id = id;
+    input.value = value;
+    input.checked = value === profileOptions.cover.backgroundMode;
+    input.addEventListener("change", () => {
+      if (input.checked) {
+        profileOptions.cover.backgroundMode = value;
+        syncFrontLayerState();
+        schedulePreview();
+      }
+    });
+
+    const option = createElement("label", "overview-layout-option", labelText);
+    option.htmlFor = id;
+    backgroundModeOptions.append(input, option);
+  }
+  backgroundModeGroup.append(backgroundModeOptions);
+
+  const sliders = createElement("div", "overview-cover-sliders");
+  const sliderRows = [];
+
+  function createSliderRow(key, labelText, { min, max, step, suffix }) {
+    const row = createElement("label", "overview-slider-row");
+    row.dataset.key = key;
+    const head = createElement("div", "overview-slider-head");
+    const label = createElement("span", "overview-slider-label", labelText);
+    const valueText = createElement("strong", "overview-slider-value", "");
+    head.append(label, valueText);
+
+    const input = createElement("input", "overview-slider-input");
+    input.type = "range";
+    input.min = String(min);
+    input.max = String(max);
+    input.step = String(step);
+    input.value = String(profileOptions.cover[key]);
+
+    const sync = () => {
+      valueText.textContent = `${input.value}${suffix}`;
+    };
+
+    input.addEventListener("input", () => {
+      profileOptions.cover[key] = Number(input.value);
+      sync();
+      schedulePreview();
+    });
+
+    sync();
+    row.append(head, input);
+    sliders.append(row);
+    sliderRows.push({ key, row, input, valueText, sync });
+  }
+
+  createSliderRow("rearBlur", "뒷배경 블러", { min: 0, max: 32, step: 1, suffix: "px" });
+  createSliderRow("rearOpacity", "뒷배경 불투명도", { min: 0, max: 100, step: 1, suffix: "%" });
+  createSliderRow("frontBlur", "앞배경 블러", { min: 0, max: 24, step: 1, suffix: "px" });
+  createSliderRow("frontOpacity", "앞배경 불투명도", { min: 0, max: 100, step: 1, suffix: "%" });
+
+  function syncFrontLayerState() {
+    const disabled = profileOptions.cover.backgroundMode !== "dual";
+    for (const item of sliderRows) {
+      if (!item.key.startsWith("front")) continue;
+      item.row.classList.toggle("is-disabled", disabled);
+      item.input.disabled = disabled;
+    }
+  }
+
+  const previewPanel = createElement("div", "overview-preview");
+  const previewHead = createElement("div", "overview-preview-head");
+  previewHead.append(
+    createElement("span", "overview-layout-label", "미리보기"),
+    createElement("span", "overview-preview-size", "실제 저장 표지 기준"),
+  );
+  const previewFrame = createElement("div", "overview-preview-frame");
+  const previewImage = createElement("img", "overview-preview-image");
+  previewImage.alt = `${user.handle} 표지 미리보기`;
+  const previewStatus = createElement("p", "overview-preview-status", "미리보기를 준비하는 중입니다.");
+  previewFrame.append(previewImage);
+  previewPanel.append(previewHead, previewFrame, previewStatus);
+
+  async function refreshPreview() {
+    const currentVersion = ++previewVersion;
+    previewStatus.textContent = "미리보기를 만드는 중입니다.";
+
+    try {
+      const canvas = await createProfileCanvas(
+        user,
+        stats,
+        topProblems,
+        tier,
+        classText,
+        media,
+        {
+          layout: profileOptions.layout,
+          cover: { ...profileOptions.cover },
+        },
+      );
+      const blob = await canvasToBlob(canvas, "image/jpeg", 0.94);
+      if (currentVersion !== previewVersion || !blob) return;
+
+      const nextUrl = URL.createObjectURL(blob);
+      previewImage.src = nextUrl;
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      previewUrl = nextUrl;
+      previewStatus.textContent = "지금 설정으로 저장됩니다.";
+    } catch {
+      if (currentVersion !== previewVersion) return;
+      previewStatus.textContent = "미리보기를 만들지 못했습니다.";
+    }
+  }
+
+  function schedulePreview() {
+    clearTimeout(previewTimer);
+    previewTimer = window.setTimeout(() => {
+      refreshPreview();
+    }, 140);
+  }
+
+  controls.append(showMetaRow, backgroundModeGroup, sliders, previewPanel);
   layoutToggle.append(layoutOptions);
-  overviewPanel.inner.append(actions, layoutToggle);
+  overviewPanel.inner.append(actions, layoutToggle, controls);
+  syncFrontLayerState();
+  schedulePreview();
   return overviewPanel.section;
 }
 
