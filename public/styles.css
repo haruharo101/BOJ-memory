@@ -1098,6 +1098,8 @@ input {
   top: 72px;
   display: grid;
   align-content: start;
+  max-height: calc(100dvh - 104px);
+  overflow: hidden;
 }
 
 .overview-cover-controls {
@@ -1274,13 +1276,27 @@ input {
   width: 100%;
   min-width: 0;
   height: 38px;
-  border: 1px solid rgb(255 255 255 / 18%);
+  border: 1px solid rgb(255 255 255 / 22%);
   border-radius: 8px;
   padding: 0 10px;
-  background: rgb(255 255 255 / 8%);
-  color: white;
+  background: rgb(245 247 246 / 0.96);
+  color: #1b2529;
+  color-scheme: light;
   font-size: 0.82rem;
   font-weight: 800;
+  appearance: auto;
+  -webkit-appearance: menulist;
+}
+
+.overview-font-select:focus {
+  outline: none;
+  border-color: rgb(58 176 158 / 0.88);
+  box-shadow: 0 0 0 3px rgb(58 176 158 / 0.18);
+}
+
+.overview-font-select option {
+  color: #101417;
+  background: #ffffff;
 }
 
 .overview-check {
@@ -1368,12 +1384,14 @@ input {
 }
 
 .overview-preview-frame {
-  width: 100%;
+  width: min(100%, calc((100dvh - 300px) * 5 / 3), 920px);
   aspect-ratio: 5 / 3;
+  max-height: min(calc(100dvh - 300px), 552px);
   overflow: hidden;
   border: 1px solid rgb(255 255 255 / 18%);
   border-radius: 8px;
   background: rgb(255 255 255 / 6%);
+  justify-self: start;
 }
 
 .overview-preview-canvas {
@@ -1586,6 +1604,8 @@ input {
 
   .overview-preview-column {
     position: static;
+    max-height: none;
+    overflow: visible;
   }
 
   .overview-button {
@@ -1600,6 +1620,11 @@ input {
   .overview-preview-frame,
   .overview-layout-options {
     width: 100%;
+  }
+
+  .overview-preview-frame {
+    width: min(100%, calc((100dvh - 360px) * 5 / 3), 100%);
+    max-height: min(44dvh, 360px);
   }
 
   .overview-cover-sliders {
@@ -1737,6 +1762,11 @@ input {
 
   .overview-font-row-controls {
     grid-template-columns: 1fr;
+  }
+
+  .overview-preview-frame {
+    width: 100%;
+    max-height: min(38dvh, 250px);
   }
 
   .rating-bonuses {
