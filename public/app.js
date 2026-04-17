@@ -1272,7 +1272,7 @@ async function createProfileCanvas(user, stats, topProblems, tier, classText, me
   const contentRight = 926;
   const contentX = isRightLayout ? contentRight - 150 : 74;
   const textX = isRightLayout ? contentRight : contentX;
-  const metaX = 74;
+  const metaX = isRightLayout ? contentRight : 74;
   const handleMaxWidth = 560;
   const overviewStats = [
     ["푼 문제 수", formatNumber(stats.solvedCount)],
@@ -1367,12 +1367,14 @@ async function createProfileCanvas(user, stats, topProblems, tier, classText, me
       size: 11,
       weight: 850,
       maxWidth: 580,
+      align: textAlign,
     });
     drawOverviewText(context, `뱃지 : ${media.badgeName}`, metaX, 576, {
       color: "rgba(255,255,255,0.72)",
       size: 11,
       weight: 850,
       maxWidth: 580,
+      align: textAlign,
     });
   }
 
