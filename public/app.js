@@ -2253,18 +2253,16 @@ function createOverviewPanel(user, stats, topProblems, tier, classText, media, r
 
   const previewPanel = createElement("div", "overview-preview");
   const previewHead = createElement("div", "overview-preview-head");
-  previewHead.append(
-    createElement("span", "overview-layout-label", "미리보기"),
-    createElement("span", "overview-preview-size", "실제 저장 표지 기준"),
-  );
+  previewHead.append(createElement("span", "overview-layout-label", "미리보기"));
   const previewFrame = createElement("div", "overview-preview-frame");
   const previewCanvas = createElement("canvas", "overview-preview-canvas");
+  const previewSize = createElement("span", "overview-preview-size", "실제 저장 표지 기준");
   previewCanvas.width = profileImageWidth;
   previewCanvas.height = profileImageHeight;
   previewCanvas.setAttribute("aria-label", `${user.handle} 표지 미리보기`);
   const previewContext = previewCanvas.getContext("2d");
   const previewStatus = createElement("p", "overview-preview-status", "미리보기를 준비하는 중입니다.");
-  previewFrame.append(previewCanvas);
+  previewFrame.append(previewCanvas, previewSize);
   previewPanel.append(previewHead, previewFrame, previewStatus);
 
   async function refreshPreview() {
