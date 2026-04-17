@@ -865,13 +865,9 @@ input {
 
 .language-stat-grid {
   width: min(100%, 1040px);
-  max-height: min(66svh, 680px);
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
-  overflow-y: auto;
-  padding-right: 8px;
-  scrollbar-color: rgb(58 176 158 / 72%) rgb(255 255 255 / 10%);
 }
 
 .language-stat-card {
@@ -1299,7 +1295,6 @@ input {
 
   .language-stat-grid {
     grid-template-columns: 1fr;
-    max-height: min(64svh, 620px);
   }
 
   .language-status-list {

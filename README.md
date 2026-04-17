@@ -27,3 +27,14 @@ Vercel에서는 `public/` 정적 파일과 `api/` 서버리스 함수를 함께 
 ```txt
 BOJ_MEMORY_FRONTEND_ORIGINS=https://example.com,https://www.example.com
 ```
+
+## 업데이트 로그
+
+### 2026-04-17
+
+- USER INFO 요약과 저장 이미지/PDF 표지에 `최장 스트릭` 표시 추가
+- overview 섹션에 표지 커스터마이징 옵션 추가
+- 배경/뱃지 정보 표시 여부 on/off 추가
+- 표지 배경을 `뒷배경만` 또는 `앞/뒷배경`으로 선택 가능하게 변경
+- 앞배경/뒷배경의 블러와 불투명도 조절, 실시간 미리보기 추가
+- language stats 섹션의 내부 스크롤 제거, 전체 페이지 스크롤로 통합
