@@ -32,6 +32,10 @@ BOJ_MEMORY_FRONTEND_ORIGINS=https://example.com,https://www.example.com
 
 ### 2026-04-18
 
+- 백업 TXT 저장 / 불러오기 기능 추가
+- 검색 화면의 백업 TXT 불러오기 버튼 디자인과 로딩 표시 개선
+- Save to file 액션 버튼과 커스터마이징 토글 폭 정렬 정리
+- PDF AC RATING 페이지의 레이팅 / TOP 100 TIERS 배치 보정
 - 저장 표지 커스터마이징 영역을 데스크톱에서 설정 / 미리보기 동시 확인이 가능하도록 재구성
 - 표지 미리보기를 blob 이미지 대신 실시간 canvas 렌더링으로 변경
 - 표지 이미지 폰트 커스터마이징에 여러 폰트 프리셋 추가

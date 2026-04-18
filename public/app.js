@@ -3,6 +3,8 @@ const handleInput = document.querySelector("#handle");
 const message = document.querySelector("#form-message");
 const memory = document.querySelector("#memory");
 const intro = document.querySelector(".intro");
+const backupImportTrigger = document.querySelector("#backup-import-trigger");
+const backupImportInput = document.querySelector("#backup-import-input");
 const graphCanvas = document.querySelector("#graph-flow");
 const storyNav = document.querySelector("#story-nav");
 const storyNavCurrent = document.querySelector("#story-nav-current");
@@ -23,6 +25,7 @@ const profileRenderScale = 2;
 const reportPageWidth = 1400;
 const reportPageHeight = 900;
 const reportRenderScale = 2;
+const backupImportMaxBytes = 2 * 1024 * 1024;
 const canvasFontFamily = "Pretendard, system-ui, sans-serif";
 const coverFontPresets = [
   {
@@ -1676,8 +1679,9 @@ function createRatingReportPage(backgroundImage, user, stats, topProblems, tier,
     hashString(`${user.handle}:rating`),
     fontFamily,
   );
+  const leftSectionOffsetY = 96;
 
-  drawRatingPair(context, user, stats, 82, 264, {
+  drawRatingPair(context, user, stats, 82, 264 + leftSectionOffsetY, {
     columnGap: 86,
     acWidth: 210,
     overWidth: 220,
@@ -1705,8 +1709,8 @@ function createRatingReportPage(backgroundImage, user, stats, topProblems, tier,
         weight: 900,
       }),
     },
-  ], 86, 392);
-  drawOverviewText(context, `ranking #${formatNumber(user.rank || 0)}`, 86, 428, {
+  ], 86, 392 + leftSectionOffsetY);
+  drawOverviewText(context, `ranking #${formatNumber(user.rank || 0)}`, 86, 428 + leftSectionOffsetY, {
     color: "rgba(255,255,255,0.68)",
     size: 18,
     weight: 850,
@@ -1721,7 +1725,7 @@ function createRatingReportPage(backgroundImage, user, stats, topProblems, tier,
   for (let index = 0; index < bonuses.length; index += 1) {
     const [label, value] = bonuses[index];
     const x = 82 + (index % 2) * 270;
-    const y = 520 + Math.floor(index / 2) * 92;
+    const y = 520 + leftSectionOffsetY + Math.floor(index / 2) * 92;
     drawReportMetric(context, label, `+${formatNumber(value)}`, x, y, 220);
   }
 
@@ -2029,6 +2033,17 @@ async function downloadProfilePdf(user, stats, topProblems, tier, classText, med
   downloadBlob(blob, `BOJ memory - ${user.handle}.pdf`);
 }
 
+async function downloadBackupText(user) {
+  const response = await fetch(`${apiBaseUrl}/api/backup?handle=${encodeURIComponent(user.handle)}`);
+  const backupText = await response.text();
+
+  if (!response.ok) {
+    throw new Error(backupText || "백업 TXT를 만들지 못했습니다.");
+  }
+
+  downloadBlob(new Blob([backupText], { type: "text/plain;charset=utf-8" }), `BOJ memory - ${user.handle}.txt`);
+}
+
 function createOverviewPanel(user, stats, topProblems, tier, classText, media, reportData) {
   const overviewPanel = createStoryPanel("save to file");
   overviewPanel.section.classList.add("overview-story-panel");
@@ -2068,13 +2083,26 @@ function createOverviewPanel(user, stats, topProblems, tier, classText, media, r
     }
   });
 
+  const backupButton = createElement("button", "overview-button", "백업 TXT 저장");
+  backupButton.type = "button";
+  backupButton.addEventListener("click", async () => {
+    backupButton.disabled = true;
+    backupButton.textContent = "TXT 만드는 중";
+    try {
+      await downloadBackupText(user);
+    } finally {
+      backupButton.disabled = false;
+      backupButton.textContent = "백업 TXT 저장";
+    }
+  });
+
   const githubButton = createElement("button", "overview-button star", "★ Repo star");
   githubButton.type = "button";
   githubButton.addEventListener("click", () => {
     window.open("https://github.com/haruharo101/BOJ-memory", "_blank", "noopener,noreferrer");
   });
 
-  actions.append(saveButton, pdfButton, githubButton);
+  actions.append(saveButton, pdfButton, backupButton, githubButton);
 
   const layoutToggle = createElement("div", "overview-layout-toggle");
   layoutToggle.append(createElement("span", "overview-layout-label", "표지 이미지의 요소들을..."));
@@ -2710,6 +2738,37 @@ async function loadMemory(handle) {
   return payload;
 }
 
+async function loadBackupFile(file) {
+  if (!(file instanceof File)) {
+    throw new Error("불러올 백업 TXT 파일을 선택해주세요.");
+  }
+
+  const fileName = String(file.name || "");
+  if (!/\.txt$/i.test(fileName)) {
+    throw new Error("TXT 형식의 백업 파일만 불러올 수 있습니다.");
+  }
+
+  if (file.size > backupImportMaxBytes) {
+    throw new Error("백업 TXT 파일 크기가 너무 큽니다.");
+  }
+
+  const backupText = await file.text();
+  const response = await fetch(`${apiBaseUrl}/api/backup/import`, {
+    method: "POST",
+    headers: {
+      "content-type": "text/plain; charset=utf-8",
+    },
+    body: backupText,
+  });
+  const payload = await response.json();
+
+  if (!response.ok) {
+    throw new Error(payload.message || "백업 TXT를 불러오지 못했습니다.");
+  }
+
+  return payload;
+}
+
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   const handle = handleInput.value.trim();
@@ -2727,6 +2786,36 @@ form.addEventListener("submit", async (event) => {
     message.textContent = error.message;
   } finally {
     form.querySelector("button").disabled = false;
+  }
+});
+
+backupImportTrigger?.addEventListener("click", () => {
+  backupImportInput?.click();
+});
+
+backupImportInput?.addEventListener("change", async () => {
+  const [file] = backupImportInput.files ?? [];
+  if (!file) return;
+
+  backupImportTrigger.disabled = true;
+  backupImportTrigger.classList.add("is-loading");
+  backupImportTrigger.textContent = "TXT 불러오는 중";
+  message.textContent = `${file.name} 백업 TXT를 검증하는 중입니다.`;
+
+  try {
+    const result = await loadBackupFile(file);
+    handleInput.value = result.payload.user.handle;
+    renderMemory(result.payload);
+    message.textContent = result.verification?.signatureVerified
+      ? "서버 서명까지 확인된 백업 TXT를 불러왔습니다."
+      : "형식과 무결성을 통과한 백업 TXT를 불러왔습니다.";
+  } catch (error) {
+    message.textContent = error.message;
+  } finally {
+    backupImportTrigger.disabled = false;
+    backupImportTrigger.classList.remove("is-loading");
+    backupImportTrigger.textContent = "백업 TXT 불러오기";
+    backupImportInput.value = "";
   }
 });
 
