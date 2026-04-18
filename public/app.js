@@ -2050,6 +2050,7 @@ function createOverviewPanel(user, stats, topProblems, tier, classText, media, r
   const profileOptions = normalizeProfileOptions("left");
   let previewTimer = 0;
   let previewVersion = 0;
+  let setOverviewStatus = () => {};
 
   overviewPanel.inner.append(
     createElement("p", "story-value", "Save to file"),
@@ -2090,6 +2091,9 @@ function createOverviewPanel(user, stats, topProblems, tier, classText, media, r
     backupButton.textContent = "TXT 만드는 중";
     try {
       await downloadBackupText(user);
+      setOverviewStatus("백업 TXT를 저장했습니다.");
+    } catch (error) {
+      setOverviewStatus(error.message || "백업 TXT를 저장하지 못했습니다.");
     } finally {
       backupButton.disabled = false;
       backupButton.textContent = "백업 TXT 저장";
@@ -2355,6 +2359,9 @@ function createOverviewPanel(user, stats, topProblems, tier, classText, media, r
   previewCanvas.setAttribute("aria-label", `${user.handle} 표지 미리보기`);
   const previewContext = previewCanvas.getContext("2d");
   const previewStatus = createElement("p", "overview-preview-status", "미리보기를 준비하는 중입니다.");
+  setOverviewStatus = (text) => {
+    previewStatus.textContent = text;
+  };
   previewFrame.append(previewCanvas, previewSize);
   previewPanel.append(previewHead, previewFrame, previewStatus);
 
