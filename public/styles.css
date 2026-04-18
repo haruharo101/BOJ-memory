@@ -135,6 +135,11 @@ body {
   color: var(--ink);
 }
 
+body.search-scroll-locked {
+  height: 100dvh;
+  overflow-y: hidden;
+}
+
 body::before {
   content: "";
   position: fixed;
@@ -1266,7 +1271,7 @@ input {
 .overview-font-row-controls {
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 104px;
+  grid-template-columns: minmax(0, 1fr) 104px 88px;
   gap: 8px;
 }
 
@@ -1274,7 +1279,8 @@ input {
   min-width: 0;
 }
 
-.overview-font-select {
+.overview-font-select,
+.overview-font-size-input {
   width: 100%;
   min-width: 0;
   height: 38px;
@@ -1290,7 +1296,18 @@ input {
   -webkit-appearance: menulist;
 }
 
-.overview-font-select:focus {
+.overview-font-size-input {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.overview-font-size-input::-webkit-outer-spin-button,
+.overview-font-size-input::-webkit-inner-spin-button {
+  margin: 0;
+}
+
+.overview-font-select:focus,
+.overview-font-size-input:focus {
   outline: none;
   border-color: rgb(58 176 158 / 0.88);
   box-shadow: 0 0 0 3px rgb(58 176 158 / 0.18);
@@ -1502,14 +1519,15 @@ input {
 
   .memory {
     margin-top: 10svh;
-    padding-bottom: 88px;
+    padding-bottom: calc(100px + env(safe-area-inset-bottom));
   }
 
   .story-nav {
     top: auto;
-    right: 12px;
-    bottom: 12px;
-    left: 12px;
+    right: max(12px, env(safe-area-inset-right));
+    bottom: calc(12px + env(safe-area-inset-bottom));
+    left: max(12px, env(safe-area-inset-left));
+    width: auto;
     grid-template-columns: repeat(var(--story-count, 8), minmax(0, 1fr));
     gap: 4px;
     transform: none;
@@ -1517,9 +1535,9 @@ input {
 
   .story-nav-current {
     position: fixed;
-    right: 20px;
-    bottom: 58px;
-    left: 20px;
+    right: max(20px, calc(env(safe-area-inset-right) + 8px));
+    bottom: calc(58px + env(safe-area-inset-bottom));
+    left: max(20px, calc(env(safe-area-inset-left) + 8px));
     z-index: 4;
     display: block;
     color: rgb(255 255 255 / 84%);
@@ -1689,7 +1707,7 @@ input {
   }
 
   .overview-font-row-controls {
-    grid-template-columns: minmax(0, 1fr) 140px;
+    grid-template-columns: minmax(0, 1fr) 120px 92px;
   }
 
   .user-media-row {

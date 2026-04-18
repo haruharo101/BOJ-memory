@@ -61,6 +61,7 @@ const coverFontWeights = [
   { value: 800, label: "ExtraBold" },
   { value: 900, label: "Black" },
 ];
+const coverFontSizeRange = { min: 8, max: 96 };
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -86,20 +87,30 @@ function normalizeTypographyRole(roleOptions, defaults) {
   const weight = coverFontWeights.some((item) => item.value === Number(roleOptions?.weight))
     ? Number(roleOptions.weight)
     : defaults.weight;
-  return { font, weight };
+  const parsedSize = Number(roleOptions?.size);
+  const size = Number.isFinite(parsedSize)
+    ? clamp(Math.round(parsedSize), coverFontSizeRange.min, coverFontSizeRange.max)
+    : defaults.size;
+  return { font, weight, size };
+}
+
+function sanitizeFontSizeValue(value, fallback) {
+  const digits = String(value ?? "").replace(/\D+/g, "").slice(0, 2);
+  if (!digits) return String(fallback);
+  return String(clamp(Number(digits), coverFontSizeRange.min, coverFontSizeRange.max));
 }
 
 function createDefaultTypographyOptions() {
   return {
-    handle: { font: "pretendard", weight: 900 },
-    bio: { font: "pretendard", weight: 500 },
-    ranking: { font: "pretendard", weight: 700 },
-    statLabel: { font: "pretendard", weight: 700 },
-    statValue: { font: "pretendard", weight: 900 },
-    ratingLabel: { font: "pretendard", weight: 700 },
-    ratingValue: { font: "pretendard", weight: 900 },
-    tier: { font: "pretendard", weight: 900 },
-    meta: { font: "pretendard", weight: 500 },
+    handle: { font: "pretendard", weight: 900, size: 50 },
+    bio: { font: "pretendard", weight: 500, size: 14 },
+    ranking: { font: "pretendard", weight: 700, size: 13 },
+    statLabel: { font: "pretendard", weight: 700, size: 12 },
+    statValue: { font: "pretendard", weight: 900, size: 22 },
+    ratingLabel: { font: "pretendard", weight: 700, size: 13 },
+    ratingValue: { font: "pretendard", weight: 900, size: 38 },
+    tier: { font: "pretendard", weight: 900, size: 16 },
+    meta: { font: "pretendard", weight: 500, size: 11 },
   };
 }
 
@@ -130,6 +141,11 @@ function resolveTypography(typographyOptions = createDefaultTypographyOptions())
       },
     ]),
   );
+}
+
+function scaleRoleMetric(role, metric, defaultSize) {
+  const roleSize = role?.size ?? defaultSize;
+  return Math.max(1, Math.round(metric * (roleSize / defaultSize)));
 }
 
 function normalizeCoverOptions(coverOptions = {}) {
@@ -171,6 +187,10 @@ function pinInitialSearchPosition() {
     if (memory.childElementCount) return;
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   });
+}
+
+function syncSearchScrollLock() {
+  document.body.classList.toggle("search-scroll-locked", memory.childElementCount === 0);
 }
 
 function startMemoryGraph(canvas) {
@@ -1010,14 +1030,14 @@ function drawOverviewStat(context, label, value, x, y, width, align = "left", st
   context.stroke();
   drawOverviewText(context, label, textX, y + 18, {
     color: "rgba(255,255,255,0.62)",
-    size: 12,
+    size: styles.labelSize ?? 12,
     weight: styles.labelWeight ?? 850,
     family: styles.labelFamily,
     align,
   });
   drawOverviewText(context, value, textX, y + 44, {
     color: "#ffffff",
-    size: 22,
+    size: styles.valueSize ?? 22,
     weight: styles.valueWeight ?? 950,
     family: styles.valueFamily,
     align,
@@ -1416,18 +1436,18 @@ async function createProfileCanvas(user, stats, topProblems, tier, classText, me
 
   drawOverviewText(context, user.handle, textX, 232, fitCanvasText(context, user.handle, handleMaxWidth, {
     color: "#ffffff",
-    size: 50,
-    minimumSize: 34,
+    size: typography.handle.size,
+    minimumSize: scaleRoleMetric(typography.handle, 34, 50),
     weight: typography.handle.weight,
     family: typography.handle.family,
     align: textAlign,
   }));
   drawWrappedCanvasText(context, user.bio || "one last solved.ac snapshot", textX, 260, handleMaxWidth, {
     color: "rgba(255,255,255,0.74)",
-    size: 14,
-    minimumSize: 10,
+    size: typography.bio.size,
+    minimumSize: scaleRoleMetric(typography.bio, 10, 14),
     maxLines: 2,
-    lineHeight: 17,
+    lineHeight: scaleRoleMetric(typography.bio, 17, 14),
     weight: typography.bio.weight,
     family: typography.bio.family,
     align: textAlign,
@@ -1435,7 +1455,7 @@ async function createProfileCanvas(user, stats, topProblems, tier, classText, me
 
   drawOverviewText(context, `SOLVED.AC RANKING #${formatNumber(user.rank || 0)}`, textX, 294, {
     color: "rgba(255,255,255,0.72)",
-    size: rankingSize,
+    size: typography.ranking.size,
     weight: typography.ranking.weight,
     family: typography.ranking.family,
     maxWidth: handleMaxWidth,
@@ -1443,7 +1463,7 @@ async function createProfileCanvas(user, stats, topProblems, tier, classText, me
   });
   drawOverviewText(context, `BOJ RANKING #${media.bojRank ? formatNumber(media.bojRank) : "--"}`, textX, 312, {
     color: "rgba(255,255,255,0.72)",
-    size: rankingSize,
+    size: typography.ranking.size,
     weight: typography.ranking.weight,
     family: typography.ranking.family,
     maxWidth: handleMaxWidth,
@@ -1454,8 +1474,10 @@ async function createProfileCanvas(user, stats, topProblems, tier, classText, me
     drawOverviewStat(context, label, value, statStartX + statGap * index, 318, statWidth, textAlign, {
       labelFamily: typography.statLabel.family,
       labelWeight: typography.statLabel.weight,
+      labelSize: typography.statLabel.size,
       valueFamily: typography.statValue.family,
       valueWeight: typography.statValue.weight,
+      valueSize: typography.statValue.size,
     });
   });
 
@@ -1465,16 +1487,19 @@ async function createProfileCanvas(user, stats, topProblems, tier, classText, me
     overRightOffset: isRightLayout ? 27 : 0,
     labelFamily: typography.ratingLabel.family,
     labelWeight: typography.ratingLabel.weight,
+    labelSize: typography.ratingLabel.size,
     valueFamily: typography.ratingValue.family,
     valueWeight: typography.ratingValue.weight,
+    ratingSize: typography.ratingValue.size,
+    overSize: scaleRoleMetric(typography.ratingValue, 20, 38),
   });
   const ratingTierItems = [
     {
       text: tier.name,
       options: fitCanvasText(context, tier.name, 120, {
         color: tierColor(user.tier),
-        size: 16,
-        minimumSize: 13,
+        size: typography.tier.size,
+        minimumSize: scaleRoleMetric(typography.tier, 13, 16),
         weight: typography.tier.weight,
         family: typography.tier.family,
       }),
@@ -1483,8 +1508,8 @@ async function createProfileCanvas(user, stats, topProblems, tier, classText, me
       text: classText,
       options: fitCanvasText(context, classText, 110, {
         color: "rgba(255,255,255,0.8)",
-        size: 16,
-        minimumSize: 13,
+        size: typography.tier.size,
+        minimumSize: scaleRoleMetric(typography.tier, 13, 16),
         weight: typography.tier.weight,
         family: typography.tier.family,
       }),
@@ -1500,7 +1525,7 @@ async function createProfileCanvas(user, stats, topProblems, tier, classText, me
   if (coverOptions.showMeta) {
     drawOverviewText(context, `배경 : ${media.backgroundName}`, metaX, 552, {
       color: "rgba(255,255,255,0.72)",
-      size: 11,
+      size: typography.meta.size,
       weight: typography.meta.weight,
       family: typography.meta.family,
       maxWidth: 580,
@@ -1508,7 +1533,7 @@ async function createProfileCanvas(user, stats, topProblems, tier, classText, me
     });
     drawOverviewText(context, `뱃지 : ${media.badgeName}`, metaX, 576, {
       color: "rgba(255,255,255,0.72)",
-      size: 11,
+      size: typography.meta.size,
       weight: typography.meta.weight,
       family: typography.meta.family,
       maxWidth: 580,
@@ -2129,10 +2154,41 @@ function createOverviewPanel(user, stats, topProblems, tier, classText, media, r
     });
     weightField.append(weightSelect);
 
-    controlsRow.append(familyField, weightField);
+    const sizeField = createElement("label", "overview-font-field");
+    const sizeInput = createElement("input", "overview-font-size-input");
+    sizeInput.type = "text";
+    sizeInput.inputMode = "numeric";
+    sizeInput.autocomplete = "off";
+    sizeInput.spellcheck = false;
+    sizeInput.maxLength = 2;
+    sizeInput.pattern = "[0-9]{1,2}";
+    sizeInput.setAttribute("aria-label", `${titleText} 폰트 크기`);
+    sizeInput.title = `${coverFontSizeRange.min}~${coverFontSizeRange.max}`;
+    sizeInput.value = String(profileOptions.typography[roleKey].size);
+    sizeInput.addEventListener("beforeinput", (event) => {
+      if (event.inputType.startsWith("delete")) return;
+      if (event.data && /\D/.test(event.data)) {
+        event.preventDefault();
+      }
+    });
+    sizeInput.addEventListener("input", () => {
+      const nextValue = sanitizeFontSizeValue(sizeInput.value, profileOptions.typography[roleKey].size);
+      sizeInput.value = nextValue;
+      profileOptions.typography[roleKey].size = Number(nextValue);
+      schedulePreview();
+    });
+    sizeInput.addEventListener("blur", () => {
+      const fallback = createDefaultTypographyOptions()[roleKey].size;
+      const nextValue = sanitizeFontSizeValue(sizeInput.value, fallback);
+      profileOptions.typography[roleKey].size = Number(nextValue);
+      sizeInput.value = nextValue;
+    });
+    sizeField.append(sizeInput);
+
+    controlsRow.append(familyField, weightField, sizeField);
     row.append(controlsRow);
     fontGroup.append(row);
-    fontControls.push({ roleKey, familySelect, weightSelect });
+    fontControls.push({ roleKey, familySelect, weightSelect, sizeInput });
   }
 
   function syncTypographyControls() {
@@ -2140,6 +2196,7 @@ function createOverviewPanel(user, stats, topProblems, tier, classText, media, r
     for (const control of fontControls) {
       control.familySelect.value = normalizedTypography[control.roleKey].font;
       control.weightSelect.value = String(normalizedTypography[control.roleKey].weight);
+      control.sizeInput.value = String(normalizedTypography[control.roleKey].size);
     }
   }
 
@@ -2621,6 +2678,7 @@ function renderMemory(payload) {
   );
 
   memory.replaceChildren(story);
+  syncSearchScrollLock();
   activeCategory = "";
   renderStoryNav(categories);
   observeStory();
@@ -2666,4 +2724,5 @@ form.addEventListener("submit", async (event) => {
 
 window.addEventListener("pageshow", pinInitialSearchPosition);
 pinInitialSearchPosition();
+syncSearchScrollLock();
 startMemoryGraph(graphCanvas);
