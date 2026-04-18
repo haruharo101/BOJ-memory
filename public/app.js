@@ -62,6 +62,7 @@ const coverFontWeights = [
   { value: 900, label: "Black" },
 ];
 const coverFontSizeRange = { min: 8, max: 96 };
+const coverFontSizeInputMax = 100000000;
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -94,10 +95,15 @@ function normalizeTypographyRole(roleOptions, defaults) {
   return { font, weight, size };
 }
 
-function sanitizeFontSizeValue(value, fallback) {
-  const digits = String(value ?? "").replace(/\D+/g, "").slice(0, 2);
-  if (!digits) return String(fallback);
-  return String(clamp(Number(digits), coverFontSizeRange.min, coverFontSizeRange.max));
+function sanitizeFontSizeInputValue(value) {
+  const digits = String(value ?? "").replace(/\D+/g, "");
+  if (!digits) return "";
+  return String(Math.min(Number(digits.slice(0, 9)), coverFontSizeInputMax));
+}
+
+function resolveAppliedFontSizeValue(value, fallback) {
+  if (!value) return fallback;
+  return clamp(Number(value), coverFontSizeRange.min, coverFontSizeRange.max);
 }
 
 function createDefaultTypographyOptions() {
@@ -2160,10 +2166,10 @@ function createOverviewPanel(user, stats, topProblems, tier, classText, media, r
     sizeInput.inputMode = "numeric";
     sizeInput.autocomplete = "off";
     sizeInput.spellcheck = false;
-    sizeInput.maxLength = 2;
-    sizeInput.pattern = "[0-9]{1,2}";
+    sizeInput.maxLength = 9;
+    sizeInput.pattern = "[0-9]*";
     sizeInput.setAttribute("aria-label", `${titleText} 폰트 크기`);
-    sizeInput.title = `${coverFontSizeRange.min}~${coverFontSizeRange.max}`;
+    sizeInput.title = `${coverFontSizeRange.min}~${coverFontSizeRange.max} 적용, 입력은 최대 ${coverFontSizeInputMax}`;
     sizeInput.value = String(profileOptions.typography[roleKey].size);
     sizeInput.addEventListener("beforeinput", (event) => {
       if (event.inputType.startsWith("delete")) return;
@@ -2172,16 +2178,18 @@ function createOverviewPanel(user, stats, topProblems, tier, classText, media, r
       }
     });
     sizeInput.addEventListener("input", () => {
-      const nextValue = sanitizeFontSizeValue(sizeInput.value, profileOptions.typography[roleKey].size);
+      const fallback = createDefaultTypographyOptions()[roleKey].size;
+      const nextValue = sanitizeFontSizeInputValue(sizeInput.value);
       sizeInput.value = nextValue;
-      profileOptions.typography[roleKey].size = Number(nextValue);
+      profileOptions.typography[roleKey].size = resolveAppliedFontSizeValue(nextValue, fallback);
       schedulePreview();
     });
     sizeInput.addEventListener("blur", () => {
       const fallback = createDefaultTypographyOptions()[roleKey].size;
-      const nextValue = sanitizeFontSizeValue(sizeInput.value, fallback);
-      profileOptions.typography[roleKey].size = Number(nextValue);
+      const nextValue = sanitizeFontSizeInputValue(sizeInput.value);
+      profileOptions.typography[roleKey].size = resolveAppliedFontSizeValue(nextValue, fallback);
       sizeInput.value = nextValue;
+      schedulePreview();
     });
     sizeField.append(sizeInput);
 
