@@ -1060,16 +1060,16 @@ input {
   --tier-cell: 24px;
   --tier-gap: 6px;
   display: grid;
-  grid-template-columns: repeat(25, var(--tier-cell));
+  grid-template-columns: repeat(25, minmax(0, 1fr));
   gap: var(--tier-gap);
-  width: calc(25 * var(--tier-cell) + 24 * var(--tier-gap));
-  max-width: 100%;
+  width: min(100%, calc(25 * var(--tier-cell) + 24 * var(--tier-gap)));
+  justify-self: start;
 }
 
 .rating-tier-dot {
   display: block;
-  width: var(--tier-cell);
-  height: var(--tier-cell);
+  width: 100%;
+  aspect-ratio: 1;
   border-radius: 4px;
   background: var(--tier-color, rgb(255 255 255 / 18%));
   opacity: 0;
@@ -1848,6 +1848,10 @@ input {
 }
 
 @media (max-width: 820px) {
+  :root {
+    --mobile-shell-width: min(560px, calc(100vw - 24px));
+  }
+
   .shell {
     width: min(100% - 24px, 560px);
     padding: 0;
@@ -1859,30 +1863,38 @@ input {
 
   .memory {
     margin-top: 10svh;
-    padding-bottom: calc(100px + env(safe-area-inset-bottom));
+    padding-bottom: calc(132px + env(safe-area-inset-bottom));
   }
 
   .story-nav {
     top: auto;
-    right: max(12px, env(safe-area-inset-right));
-    bottom: calc(12px + env(safe-area-inset-bottom));
-    left: max(12px, env(safe-area-inset-left));
-    width: auto;
-    max-width: calc(100vw - 24px);
+    right: auto;
+    bottom: calc(24px + env(safe-area-inset-bottom));
+    left: 50%;
+    z-index: 10;
+    width: var(--mobile-shell-width);
+    max-width: var(--mobile-shell-width);
+    min-height: 34px;
     grid-template-columns: repeat(var(--story-count, 8), minmax(0, 1fr));
+    align-items: center;
     gap: 4px;
-    padding: 0 6px;
-    overflow: hidden;
-    transform: none;
+    padding: 0 12px;
+    overflow: visible;
+    isolation: isolate;
+    transform: translateX(-50%);
   }
 
   .story-nav-current {
     position: fixed;
-    right: max(20px, calc(env(safe-area-inset-right) + 8px));
-    bottom: calc(58px + env(safe-area-inset-bottom));
-    left: max(20px, calc(env(safe-area-inset-left) + 8px));
-    z-index: 4;
-    display: block;
+    bottom: calc(84px + env(safe-area-inset-bottom));
+    left: 50%;
+    z-index: 11;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--mobile-shell-width);
+    max-width: var(--mobile-shell-width);
+    padding: 0 12px;
     color: rgb(255 255 255 / 84%);
     font-size: 0.84rem;
     font-weight: 900;
@@ -1890,8 +1902,11 @@ input {
     text-align: center;
     text-transform: uppercase;
     letter-spacing: 0;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
     opacity: 0;
-    transform: translateY(6px);
+    transform: translate(-50%, 6px);
     pointer-events: none;
     transition:
       opacity 180ms ease,
@@ -1900,7 +1915,7 @@ input {
 
   .story-nav-current.is-visible {
     opacity: 1;
-    transform: translateY(0);
+    transform: translate(-50%, 0);
   }
 
   .story-nav::before {
@@ -1910,13 +1925,13 @@ input {
     bottom: auto;
     width: auto;
     height: 2px;
+    background: linear-gradient(90deg, transparent, rgb(255 255 255 / 38%) 16%, rgb(255 255 255 / 38%) 84%, transparent);
     transform: translateY(-50%);
   }
 
   .story-nav-item {
     height: 34px;
     padding: 0;
-    overflow: hidden;
     color: transparent;
     text-align: center;
   }
@@ -1925,6 +1940,7 @@ input {
     top: 50%;
     right: auto;
     left: 50%;
+    background: rgb(255 255 255 / 42%);
     transform: translate(-50%, -50%);
   }
 
@@ -1935,8 +1951,8 @@ input {
 
   .story-nav-item.is-active::after {
     box-shadow:
-      0 0 0 2px rgb(79 218 196 / 22%),
-      0 0 10px rgb(79 218 196 / 70%);
+      0 0 0 2px rgb(79 218 196 / 26%),
+      0 0 14px rgb(79 218 196 / 76%);
     transform: translate(-50%, -50%) scale(1.18);
   }
 
@@ -1971,6 +1987,14 @@ input {
     gap: 16px;
   }
 
+  .story-label {
+    padding-left: 0;
+  }
+
+  .story-label::before {
+    content: none;
+  }
+
   .overview-story-panel .story-panel-inner {
     width: 100%;
   }
@@ -1994,8 +2018,8 @@ input {
 
   .rating-tier-grid {
     --tier-cell: 22px;
-    grid-template-columns: repeat(20, var(--tier-cell));
-    width: calc(20 * var(--tier-cell) + 19 * var(--tier-gap));
+    grid-template-columns: repeat(20, minmax(0, 1fr));
+    width: min(100%, calc(20 * var(--tier-cell) + 19 * var(--tier-gap)));
   }
 
   .boj-stat-priority,
@@ -2199,8 +2223,8 @@ input {
   .rating-tier-grid {
     --tier-cell: 24px;
     --tier-gap: 5px;
-    grid-template-columns: repeat(10, var(--tier-cell));
-    width: calc(10 * var(--tier-cell) + 9 * var(--tier-gap));
+    grid-template-columns: repeat(10, minmax(0, 1fr));
+    width: min(100%, calc(10 * var(--tier-cell) + 9 * var(--tier-gap)));
   }
 
   .rating-tier-legend {

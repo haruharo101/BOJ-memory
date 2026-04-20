@@ -14,7 +14,8 @@ const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 const apiBaseUrl = (window.BOJ_MEMORY_API_BASE_URL || "").replace(/\/$/, "");
 let storyObserver;
 let activeCategory = "";
-let mobileNavTimer = 0;
+let mobileNavFrame = 0;
+let mobileNavCategory = "";
 const storyIntersectionRatios = new WeakMap();
 const numberAnimationFrames = new WeakMap();
 const panelResetTimers = new WeakMap();
@@ -2550,26 +2551,30 @@ function syncStoryNavState(category) {
   }
 
   if (storyNavCurrent) {
-    storyNavCurrent.textContent = category || "";
-    storyNavCurrent.classList.toggle("is-visible", Boolean(category));
+    if (category) {
+      storyNavCurrent.textContent = category;
+    }
+    storyNavCurrent.classList.toggle("is-visible", storyNav.childElementCount > 0);
   }
 }
 
 function scheduleStoryNavState(category) {
-  if (mobileNavTimer) {
-    clearTimeout(mobileNavTimer);
-    mobileNavTimer = 0;
-  }
-
   if (window.innerWidth > 820) {
+    if (mobileNavFrame) {
+      cancelAnimationFrame(mobileNavFrame);
+      mobileNavFrame = 0;
+    }
     syncStoryNavState(category);
     return;
   }
 
-  mobileNavTimer = window.setTimeout(() => {
-    syncStoryNavState(category);
-    mobileNavTimer = 0;
-  }, 140);
+  mobileNavCategory = category;
+  if (mobileNavFrame) return;
+
+  mobileNavFrame = requestAnimationFrame(() => {
+    syncStoryNavState(mobileNavCategory);
+    mobileNavFrame = 0;
+  });
 }
 
 function setActiveCategory(category) {
