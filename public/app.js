@@ -14,7 +14,8 @@ const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 const apiBaseUrl = (window.BOJ_MEMORY_API_BASE_URL || "").replace(/\/$/, "");
 let storyObserver;
 let activeCategory = "";
-let mobileNavTimer = 0;
+let mobileNavFrame = 0;
+let mobileNavCategory = "";
 const storyIntersectionRatios = new WeakMap();
 const numberAnimationFrames = new WeakMap();
 const panelResetTimers = new WeakMap();
@@ -797,16 +798,42 @@ function createRatingDetails(user, stats, topProblems) {
     tierGrid.append(dot);
   }
 
-  const tierCounts = topProblemTiers.reduce((counts, level) => {
+  const tierCountsByFamily = {};
+  const tierCountsByLevel = {};
+  for (const level of topProblemTiers) {
     const family = tierInfo(level).family;
-    counts[family] = (counts[family] ?? 0) + 1;
-    return counts;
-  }, {});
+    tierCountsByFamily[family] = (tierCountsByFamily[family] ?? 0) + 1;
+    tierCountsByLevel[level] = (tierCountsByLevel[level] ?? 0) + 1;
+  }
   const tierLegend = createElement("div", "rating-tier-legend");
-  for (const family of ["bronze", "silver", "gold", "platinum", "diamond", "ruby", "master"]) {
-    if (!tierCounts[family]) continue;
-    const label = createElement("span", `rating-tier-count tier-${family}`, `${family} ${tierCounts[family]}`);
-    tierLegend.append(label);
+  for (const family of ["master", "ruby", "diamond", "platinum", "gold", "silver", "bronze", "unrated"]) {
+    if (!tierCountsByFamily[family]) continue;
+    const row = createElement("div", `rating-tier-family tier-${family}`);
+    row.append(
+      createElement("span", "rating-tier-family-head", family.toUpperCase()),
+      createElement("span", "rating-tier-family-count", String(tierCountsByFamily[family])),
+    );
+
+    const breakdownLevels = [];
+    for (let level = 31; level >= 1; level -= 1) {
+      if (tierInfo(level).family !== family) continue;
+      if (!tierCountsByLevel[level]) continue;
+      breakdownLevels.push(level);
+    }
+
+    if (breakdownLevels.length > 1 || (breakdownLevels.length === 1 && family !== "master" && family !== "unrated")) {
+      const breakdown = createElement("div", "rating-tier-breakdown");
+      for (const level of breakdownLevels) {
+        const name = tierInfo(level).name;
+        const shortName = name.includes(" ") ? name.split(" ").slice(1).join(" ") : name;
+        breakdown.append(
+          createElement("span", "rating-tier-breakdown-item", `${shortName} ${tierCountsByLevel[level]}`),
+        );
+      }
+      row.append(breakdown);
+    }
+
+    tierLegend.append(row);
   }
 
   topTiers.append(tierGrid, tierLegend);
@@ -2524,26 +2551,30 @@ function syncStoryNavState(category) {
   }
 
   if (storyNavCurrent) {
-    storyNavCurrent.textContent = category || "";
-    storyNavCurrent.classList.toggle("is-visible", Boolean(category));
+    if (category) {
+      storyNavCurrent.textContent = category;
+    }
+    storyNavCurrent.classList.toggle("is-visible", storyNav.childElementCount > 0);
   }
 }
 
 function scheduleStoryNavState(category) {
-  if (mobileNavTimer) {
-    clearTimeout(mobileNavTimer);
-    mobileNavTimer = 0;
-  }
-
   if (window.innerWidth > 820) {
+    if (mobileNavFrame) {
+      cancelAnimationFrame(mobileNavFrame);
+      mobileNavFrame = 0;
+    }
     syncStoryNavState(category);
     return;
   }
 
-  mobileNavTimer = window.setTimeout(() => {
-    syncStoryNavState(category);
-    mobileNavTimer = 0;
-  }, 140);
+  mobileNavCategory = category;
+  if (mobileNavFrame) return;
+
+  mobileNavFrame = requestAnimationFrame(() => {
+    syncStoryNavState(mobileNavCategory);
+    mobileNavFrame = 0;
+  });
 }
 
 function setActiveCategory(category) {
