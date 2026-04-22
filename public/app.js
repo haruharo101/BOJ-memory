@@ -94,7 +94,10 @@ function clamp(value, min, max) {
 
 function createDefaultCoverOptions() {
   return {
+    showProfileImage: true,
+    showBadge: true,
     showMeta: true,
+    showTagRadar: true,
     backgroundMode: "dual",
     rearBlur: 12,
     rearOpacity: 82,
@@ -184,7 +187,10 @@ function normalizeCoverOptions(coverOptions = {}) {
   const defaults = createDefaultCoverOptions();
   const backgroundMode = coverOptions.backgroundMode === "rear" ? "rear" : "dual";
   return {
+    showProfileImage: coverOptions.showProfileImage ?? defaults.showProfileImage,
+    showBadge: coverOptions.showBadge ?? defaults.showBadge,
     showMeta: coverOptions.showMeta ?? defaults.showMeta,
+    showTagRadar: coverOptions.showTagRadar ?? defaults.showTagRadar,
     backgroundMode,
     rearBlur: clamp(Number(coverOptions.rearBlur ?? defaults.rearBlur), 0, 32),
     rearOpacity: clamp(Number(coverOptions.rearOpacity ?? defaults.rearOpacity), 0, 100),
@@ -1521,18 +1527,24 @@ async function createProfileCanvas(user, stats, topProblems, tier, classText, me
   const topGridX = isRightLayout ? contentRight - ratingPairWidth - 270 : contentX + 259;
   const rankingSize = 13;
   const textAlign = isRightLayout ? "right" : "left";
-  drawSolvedTagRadar(context, media.tagRatings, width / 2, height / 2, 220, {
-    alpha: coverOptions.tagRadarOpacity / 100,
-    blur: coverOptions.tagRadarBlur,
-    labelGap: 34,
-    labelMaxWidth: 180,
-    scaleLabelSize: 13,
-    tagLabelSize: 11,
-    strokeWidth: 3,
-  });
+  if (coverOptions.showTagRadar) {
+    drawSolvedTagRadar(context, media.tagRatings, width / 2, height / 2, 220, {
+      alpha: coverOptions.tagRadarOpacity / 100,
+      blur: coverOptions.tagRadarBlur,
+      labelGap: 34,
+      labelMaxWidth: 180,
+      scaleLabelSize: 13,
+      tagLabelSize: 11,
+      strokeWidth: 3,
+    });
+  }
 
-  drawRoundedImage(context, profileImage, contentX, 86, 92, 92, 8, "cover");
-  drawRoundedImage(context, badgeImage, contentX + 110, 130, 40, 40, 7, "contain");
+  if (coverOptions.showProfileImage) {
+    drawRoundedImage(context, profileImage, contentX, 86, 92, 92, 8, "cover");
+  }
+  if (coverOptions.showBadge) {
+    drawRoundedImage(context, badgeImage, contentX + 110, 130, 40, 40, 7, "contain");
+  }
 
   drawOverviewText(context, user.handle, textX, 232, fitCanvasText(context, user.handle, handleMaxWidth, {
     color: "#ffffff",
@@ -2348,15 +2360,56 @@ function createOverviewPanel(user, stats, topProblems, tier, classText, media, r
   createFontRoleRow("meta", "배경 / 뱃지");
   fontPanel.append(fontGroup);
 
-  const showMetaRow = createElement("label", "overview-check");
-  const showMetaInput = createElement("input");
-  showMetaInput.type = "checkbox";
-  showMetaInput.checked = profileOptions.cover.showMeta;
-  showMetaInput.addEventListener("change", () => {
-    profileOptions.cover.showMeta = showMetaInput.checked;
-    schedulePreview();
-  });
-  showMetaRow.append(showMetaInput, createElement("span", "overview-check-label", "배경 / 뱃지 정보 표시"));
+  const visibilityPanel = createElement("details", "overview-font-panel");
+  const visibilitySummary = createElement("summary", "overview-font-summary");
+  const visibilitySummaryCaret = createElement("span", "overview-font-caret", "▸");
+  visibilitySummaryCaret.setAttribute("aria-hidden", "true");
+  visibilitySummary.append(
+    visibilitySummaryCaret,
+    createElement("strong", "overview-font-summary-title", "표시 설정"),
+  );
+  visibilityPanel.append(visibilitySummary);
+
+  const visibilityGroup = createElement("div", "overview-visibility-group");
+  function createVisibilityRow(key, labelText) {
+    const row = createElement("div", "overview-visibility-row");
+    row.append(createElement("strong", "overview-visibility-title", labelText));
+    const options = createElement("div", "overview-visibility-options");
+    options.setAttribute("role", "radiogroup");
+    options.setAttribute("aria-label", `${labelText} 표시 여부`);
+
+    for (const [value, text] of [
+      ["show", "표시"],
+      ["hide", "미표시"],
+    ]) {
+      const id = `profile-visibility-${user.handle}-${key}-${value}`;
+      const input = createElement("input");
+      input.type = "radio";
+      input.name = `profile-visibility-${user.handle}-${key}`;
+      input.id = id;
+      input.value = value;
+      input.checked = (value === "show") === Boolean(profileOptions.cover[key]);
+      input.addEventListener("change", () => {
+        if (!input.checked) return;
+        profileOptions.cover[key] = value === "show";
+        syncLayerState();
+        schedulePreview();
+      });
+
+      const option = createElement("label", "overview-layout-option", text);
+      option.htmlFor = id;
+      options.append(input, option);
+    }
+
+    row.append(options);
+    visibilityGroup.append(row);
+  }
+
+  createVisibilityRow("showProfileImage", "프로필 사진");
+  createVisibilityRow("showBadge", "뱃지");
+  createVisibilityRow("showTagRadar", "태그 그래프");
+  createVisibilityRow("showMeta", "배경 / 뱃지 정보");
+  visibilityPanel.append(visibilityGroup);
 
   const backgroundModeGroup = createElement("div", "overview-layout-toggle");
   backgroundModeGroup.append(createElement("span", "overview-layout-label", "표지 배경 구성"));
@@ -2378,7 +2431,7 @@ function createOverviewPanel(user, stats, topProblems, tier, classText, media, r
     input.addEventListener("change", () => {
       if (input.checked) {
         profileOptions.cover.backgroundMode = value;
-        syncFrontLayerState();
+        syncLayerState();
         schedulePreview();
       }
     });
@@ -2430,12 +2483,14 @@ function createOverviewPanel(user, stats, topProblems, tier, classText, media, r
   createSliderRow("tagRadarBlur", "태그 그래프 블러", { min: 0, max: 24, step: 1, suffix: "px" });
   createSliderRow("tagRadarOpacity", "태그 그래프 불투명도", { min: 0, max: 100, step: 1, suffix: "%" });
 
-  function syncFrontLayerState() {
+  function syncLayerState() {
     const disabled = profileOptions.cover.backgroundMode !== "dual";
     for (const item of sliderRows) {
-      if (!item.key.startsWith("front")) continue;
-      item.row.classList.toggle("is-disabled", disabled);
-      item.input.disabled = disabled;
+      const disabledByFrontLayer = item.key.startsWith("front") && disabled;
+      const disabledByTagRadar = item.key.startsWith("tagRadar") && !profileOptions.cover.showTagRadar;
+      const isDisabled = disabledByFrontLayer || disabledByTagRadar;
+      item.row.classList.toggle("is-disabled", isDisabled);
+      item.input.disabled = isDisabled;
     }
   }
 
@@ -2494,13 +2549,13 @@ function createOverviewPanel(user, stats, topProblems, tier, classText, media, r
     }, 140);
   }
 
-  controls.append(fontPanel, showMetaRow, backgroundModeGroup, sliders);
+  controls.append(fontPanel, visibilityPanel, backgroundModeGroup, sliders);
   layoutToggle.append(layoutOptions);
   controlColumn.append(actions, layoutToggle, controls);
   previewColumn.append(previewPanel);
   editor.append(controlColumn, previewColumn);
   overviewPanel.inner.append(editor);
-  syncFrontLayerState();
+  syncLayerState();
   schedulePreview();
   return overviewPanel.section;
 }

@@ -1476,6 +1476,63 @@ input {
   padding: 0 14px 12px;
 }
 
+.overview-visibility-group {
+  width: 100%;
+  display: grid;
+  gap: 10px;
+  padding: 0 14px 14px;
+}
+
+.overview-visibility-row {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.9fr) minmax(0, 1.4fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.overview-visibility-title {
+  color: rgb(255 255 255 / 82%);
+  font-size: 0.82rem;
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+.overview-visibility-options {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  min-width: 0;
+  padding: 4px;
+  border: 1px solid rgb(255 255 255 / 18%);
+  border-radius: 8px;
+  background: rgb(255 255 255 / 8%);
+}
+
+.overview-visibility-options input {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.overview-visibility-options .overview-layout-option {
+  min-height: 34px;
+  font-size: 0.76rem;
+}
+
+.overview-visibility-options input:checked + .overview-layout-option {
+  background: var(--keppel);
+  color: white;
+  box-shadow: 0 8px 20px rgb(58 176 158 / 24%);
+}
+
+.overview-visibility-options input:focus-visible + .overview-layout-option {
+  outline: 2px solid white;
+  outline-offset: 2px;
+}
+
 .overview-cover-heading {
   margin: 0;
   color: white;
