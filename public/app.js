@@ -40,13 +40,13 @@ const majorTagKeys = [
 ];
 const majorTagLabels = {
   math: "math",
-  implementation: "impl",
+  implementation: "implementation",
   greedy: "greedy",
   string: "string",
-  data_structures: "data",
+  data_structures: "data_structures",
   graphs: "graphs",
   dp: "dp",
-  geometry: "geom",
+  geometry: "geometry",
 };
 const coverFontPresets = [
   {
@@ -1525,9 +1525,9 @@ async function createProfileCanvas(user, stats, topProblems, tier, classText, me
     alpha: coverOptions.tagRadarOpacity / 100,
     blur: coverOptions.tagRadarBlur,
     labelGap: 34,
-    labelMaxWidth: 132,
+    labelMaxWidth: 180,
     scaleLabelSize: 13,
-    tagLabelSize: 13,
+    tagLabelSize: 11,
     strokeWidth: 3,
   });
 
