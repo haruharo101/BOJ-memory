@@ -28,6 +28,16 @@ const reportPageHeight = 900;
 const reportRenderScale = 2;
 const backupImportMaxBytes = 2 * 1024 * 1024;
 const canvasFontFamily = "Pretendard, system-ui, sans-serif";
+const majorTagKeys = [
+  "math",
+  "implementation",
+  "greedy",
+  "string",
+  "data_structures",
+  "graphs",
+  "dp",
+  "geometry",
+];
 const coverFontPresets = [
   {
     id: "pretendard",
@@ -1219,58 +1229,6 @@ function drawReportBackground(context, image, width, height) {
   context.fillRect(0, 0, width, height);
 }
 
-function drawOctagonPath(context, x, y, radius, rotation = Math.PI / 8) {
-  context.beginPath();
-  for (let point = 0; point < 8; point += 1) {
-    const angle = rotation + (Math.PI * 2 * point) / 8;
-    const px = x + Math.cos(angle) * radius;
-    const py = y + Math.sin(angle) * radius;
-    if (point === 0) {
-      context.moveTo(px, py);
-    } else {
-      context.lineTo(px, py);
-    }
-  }
-  context.closePath();
-}
-
-function drawSolvedProfileOctagons(context, width, height, seed) {
-  const random = createSeededRandom(seed);
-  const palette = [
-    "255, 255, 255",
-    "79, 218, 196",
-    "150, 166, 255",
-  ];
-  const count = Math.max(22, Math.round((width * height) / 24000));
-
-  context.save();
-  context.globalCompositeOperation = "screen";
-
-  for (let index = 0; index < count; index += 1) {
-    const radius = 28 + random() * 86;
-    const x = -radius * 0.4 + random() * (width + radius * 0.8);
-    const y = -radius * 0.4 + random() * (height + radius * 0.8);
-    const color = palette[index % palette.length];
-    const alpha = 0.04 + random() * 0.09;
-    const rotation = Math.PI / 8 + random() * 0.1 - 0.05;
-
-    context.lineWidth = 1 + random() * 2.2;
-    context.strokeStyle = `rgba(${color}, ${alpha})`;
-    drawOctagonPath(context, x, y, radius, rotation);
-    context.stroke();
-
-    if (random() > 0.48) {
-      context.lineWidth = 1;
-      context.strokeStyle = `rgba(${color}, ${alpha * 0.52})`;
-      drawOctagonPath(context, x, y, radius * (0.62 + random() * 0.18), rotation);
-      context.stroke();
-    }
-  }
-
-  context.globalCompositeOperation = "source-over";
-  context.restore();
-}
-
 function hashString(value) {
   let hash = 2166136261;
   for (let index = 0; index < value.length; index += 1) {
@@ -1280,15 +1238,106 @@ function hashString(value) {
   return hash >>> 0;
 }
 
-function createSeededRandom(seed) {
-  let state = seed || 1;
-  return () => {
-    state += 0x6d2b79f5;
-    let value = state;
-    value = Math.imul(value ^ (value >>> 15), value | 1);
-    value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
-    return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
-  };
+function tagDisplayKey(tagRating) {
+  const englishName = tagRating.displayNames?.find((name) => name.language === "en");
+  return englishName?.short || tagRating.key;
+}
+
+function resolveMajorTagRatings(tagRatings) {
+  const ratingByKey = new Map((tagRatings || []).map((tagRating) => [tagRating.key, tagRating]));
+  return majorTagKeys.map((key) => {
+    const tagRating = ratingByKey.get(key);
+    return {
+      key,
+      label: tagRating ? tagDisplayKey(tagRating) : key,
+      rating: Number(tagRating?.rating || 0),
+      solvedCount: Number(tagRating?.solvedCount || 0),
+    };
+  });
+}
+
+function drawSolvedTagRadar(context, tagRatings, x, y, radius, options = {}) {
+  const items = resolveMajorTagRatings(tagRatings);
+  const maxRating = Math.max(...items.map((item) => item.rating), 0);
+  if (!maxRating) return;
+
+  const allMaxRating = Math.max(...(tagRatings || []).map((item) => Number(item.rating || 0)), maxRating);
+  const domain = Math.max(2000, allMaxRating * 1.2);
+  const labelRadius = radius + (options.labelGap ?? 24);
+  const ringStep = 500;
+  const ringLabels = [];
+  for (let value = ringStep; value <= domain; value += ringStep) {
+    ringLabels.push(value);
+  }
+
+  context.save();
+  context.globalAlpha = options.alpha ?? 0.72;
+  context.lineJoin = "round";
+  context.lineCap = "round";
+
+  for (const value of ringLabels) {
+    const ringRadius = (value / domain) * radius;
+    context.strokeStyle = "rgba(221, 223, 224, 0.32)";
+    context.setLineDash([8, 8]);
+    context.lineWidth = 1.2;
+    context.beginPath();
+    context.arc(x, y, ringRadius, 0, Math.PI * 2);
+    context.stroke();
+    context.setLineDash([]);
+
+    drawOverviewText(context, String(value), x, y - ringRadius, {
+      color: "rgba(255,255,255,0.42)",
+      size: options.scaleLabelSize ?? 10,
+      weight: 850,
+      align: "center",
+      baseline: "middle",
+    });
+  }
+
+  for (let index = 0; index < items.length; index += 1) {
+    const angle = -Math.PI / 2 + (Math.PI * 2 * index) / items.length;
+    const outerX = x + Math.cos(angle) * radius;
+    const outerY = y + Math.sin(angle) * radius;
+    const labelX = x + Math.cos(angle) * labelRadius;
+    const labelY = y + Math.sin(angle) * labelRadius;
+
+    context.strokeStyle = "rgba(221, 223, 224, 0.28)";
+    context.lineWidth = 1;
+    context.beginPath();
+    context.moveTo(x, y);
+    context.lineTo(outerX, outerY);
+    context.stroke();
+
+    drawOverviewText(context, items[index].label, labelX, labelY, {
+      color: "rgba(255,255,255,0.74)",
+      size: options.tagLabelSize ?? 11,
+      weight: 900,
+      align: "center",
+      baseline: "middle",
+      maxWidth: options.labelMaxWidth ?? 96,
+    });
+  }
+
+  context.beginPath();
+  for (let index = 0; index < items.length; index += 1) {
+    const angle = -Math.PI / 2 + (Math.PI * 2 * index) / items.length;
+    const pointRadius = (items[index].rating / domain) * radius;
+    const pointX = x + Math.cos(angle) * pointRadius;
+    const pointY = y + Math.sin(angle) * pointRadius;
+    if (index === 0) {
+      context.moveTo(pointX, pointY);
+    } else {
+      context.lineTo(pointX, pointY);
+    }
+  }
+  context.closePath();
+
+  context.fillStyle = "rgba(0, 158, 229, 0.18)";
+  context.strokeStyle = options.strokeColor ?? "#009ee5";
+  context.lineWidth = options.strokeWidth ?? 2;
+  context.fill();
+  context.stroke();
+  context.restore();
 }
 
 function createScaledCanvas(width, height, scale = 1, fontFamily = canvasFontFamily) {
@@ -1440,7 +1489,6 @@ async function createProfileCanvas(user, stats, topProblems, tier, classText, me
   ]);
 
   drawProfileImageBackground(context, backgroundImage, width, height, coverOptions);
-  drawSolvedProfileOctagons(context, width, height, hashString(user.handle));
 
   const isRightLayout = profileLayout === "right";
   const contentRight = 926;
@@ -1463,6 +1511,14 @@ async function createProfileCanvas(user, stats, topProblems, tier, classText, me
   const topGridX = isRightLayout ? contentRight - ratingPairWidth - 270 : contentX + 259;
   const rankingSize = 13;
   const textAlign = isRightLayout ? "right" : "left";
+  drawSolvedTagRadar(context, media.tagRatings, isRightLayout ? 276 : 724, 302, 146, {
+    alpha: 0.62,
+    labelGap: 23,
+    labelMaxWidth: 118,
+    scaleLabelSize: 9,
+    tagLabelSize: 10,
+    strokeWidth: 2.2,
+  });
 
   drawRoundedImage(context, profileImage, contentX, 86, 92, 92, 8, "cover");
   drawRoundedImage(context, badgeImage, contentX + 110, 130, 40, 40, 7, "contain");
@@ -1590,7 +1646,14 @@ async function createProfileReportPage(backgroundImage, user, stats, topProblems
   const { cover } = normalizedProfile;
 
   drawProfileImageBackground(context, backgroundImage, width, height, cover);
-  drawSolvedProfileOctagons(context, width, height, hashString(`${user.handle}:profile-report`));
+  drawSolvedTagRadar(context, media.tagRatings, width / 2, height / 2, 260, {
+    alpha: 0.34,
+    labelGap: 42,
+    labelMaxWidth: 150,
+    scaleLabelSize: 15,
+    tagLabelSize: 16,
+    strokeWidth: 3,
+  });
 
   const profileScale = Math.min(width / profileCanvas.width, height / profileCanvas.height);
   const drawWidth = profileCanvas.width * profileScale;
@@ -2621,7 +2684,7 @@ function setActiveCategory(category) {
 }
 
 function renderMemory(payload) {
-  const { user, badge, background, classStats = [], topProblems = [], bojStats = [], languageStats = [], stats } = payload;
+  const { user, badge, background, classStats = [], topProblems = [], tagRatings = [], bojStats = [], languageStats = [], stats } = payload;
   const backgroundData = background?.background ?? background;
   const badgeData = badge?.badge ?? badge;
   const tier = tierInfo(user.tier);
@@ -2740,8 +2803,10 @@ function renderMemory(payload) {
       backgroundName: backgroundData?.displayName || user.backgroundId || "배경 없음",
       badgeName: badgeData?.displayName || user.badgeId || "장착한 뱃지 없음",
       bojRank,
+      tagRatings,
     }, {
       classStats,
+      tagRatings,
       bojStats,
       languageStats,
     }),

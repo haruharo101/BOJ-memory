@@ -34,7 +34,7 @@ BOJ_MEMORY_FRONTEND_ORIGINS=https://example.com,https://www.example.com
 
 - 모바일 `TOP 100 TIERS` 그리드가 화면 폭에 맞춰 줄어들도록 반응형 열 계산으로 수정
 - 모바일 하단 섹션 네비게이션과 현재 섹션 라벨을 제거해 스크롤 중 잘림 / 사라짐 현상을 정리
-- 저장 이미지와 PDF 표지의 배경 장식을 기존 점/라인 패턴 대신 solved.ac 프로필 느낌의 8각형 패턴으로 변경
+- 저장 이미지와 PDF 표지의 배경 장식을 solved.ac `tag_ratings` 기반 태그 분포 레이더 차트로 변경
 
 ### 2026-04-18
 

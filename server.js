@@ -674,6 +674,33 @@ function normalizeProblemList(payload) {
   }));
 }
 
+function normalizeTagRatings(payload) {
+  const items = Array.isArray(payload)
+    ? payload
+    : Array.isArray(payload?.items)
+      ? payload.items
+      : [];
+
+  return items.slice(0, 128).map((entry) => {
+    const tag = entry?.tag ?? {};
+    const displayNames = Array.isArray(tag.displayNames) ? tag.displayNames : [];
+    return {
+      key: typeof tag.key === "string" ? tag.key : "",
+      displayNames: displayNames
+        .filter((name) => name && typeof name === "object")
+        .map((name) => ({
+          language: typeof name.language === "string" ? name.language : "",
+          name: typeof name.name === "string" ? name.name : "",
+          short: typeof name.short === "string" ? name.short : "",
+        })),
+      solvedCount: Number(entry?.solvedCount ?? 0) || 0,
+      rating: Number(entry?.rating ?? 0) || 0,
+      ratingByProblemsSum: Number(entry?.ratingByProblemsSum ?? 0) || 0,
+      ratingBySolvedCount: Number(entry?.ratingBySolvedCount ?? 0) || 0,
+    };
+  }).filter((entry) => entry.key);
+}
+
 function getClassLabel(user) {
   if (!user?.class) return "CLASS 없음";
   const decoration = {
@@ -718,11 +745,12 @@ async function fetchMemoryPayload(handle) {
   if (cached) return cached;
 
   const user = await fetchSolved("/user/show", { handle });
-  const [badge, background, classStats, topProblems, bojStats, languageStats] = await Promise.all([
+  const [badge, background, classStats, topProblems, tagRatings, bojStats, languageStats] = await Promise.all([
     user.badgeId ? fetchOptional("/badge/show", { badgeId: user.badgeId }) : null,
     user.backgroundId ? fetchOptional("/background/show", { backgroundId: user.backgroundId }) : null,
     fetchOptional("/user/class_stats", { handle }),
     fetchOptional("/user/top_100", { handle }),
+    fetchOptional("/user/tag_ratings", { handle }),
     fetchOptionalBojStats(handle),
     fetchOptionalBojLanguageStats(handle),
   ]);
@@ -734,6 +762,7 @@ async function fetchMemoryPayload(handle) {
     background,
     classStats: Array.isArray(classStats) ? classStats : (classStats?.data ?? []),
     topProblems: normalizeProblemList(topProblems),
+    tagRatings: normalizeTagRatings(tagRatings),
     bojStats,
     languageStats,
     stats: {
@@ -1006,11 +1035,39 @@ function normalizeImportedLanguageStats(rawValue) {
   });
 }
 
+function normalizeImportedTagRatings(rawValue) {
+  assertValid(Array.isArray(rawValue), "태그 레이팅 형식이 올바르지 않습니다.");
+  assertValid(rawValue.length <= 128, "태그 레이팅이 너무 많습니다.");
+
+  return rawValue.map((entry) => {
+    const item = requireObject(entry, "태그 레이팅 항목 형식이 올바르지 않습니다.");
+    const displayNames = Array.isArray(item.displayNames) ? item.displayNames : [];
+    assertValid(displayNames.length <= 8, "태그 표시 이름이 너무 많습니다.");
+
+    return {
+      key: validatePlainText(item.key ?? "", 80, "태그 key가 올바르지 않습니다.", { allowEmpty: false }),
+      displayNames: displayNames.map((displayName) => {
+        const name = requireObject(displayName, "태그 표시 이름 형식이 올바르지 않습니다.");
+        return {
+          language: validatePlainText(name.language ?? "", 12, "태그 언어 코드가 올바르지 않습니다."),
+          name: validatePlainText(name.name ?? "", 120, "태그 이름이 올바르지 않습니다."),
+          short: validatePlainText(name.short ?? "", 80, "태그 짧은 이름이 올바르지 않습니다."),
+        };
+      }),
+      solvedCount: validateInteger(Number(item.solvedCount ?? 0), 0, 1000000, "태그 solved 값이 올바르지 않습니다."),
+      rating: validateInteger(Number(item.rating ?? 0), 0, 1000000, "태그 rating 값이 올바르지 않습니다."),
+      ratingByProblemsSum: validateInteger(Number(item.ratingByProblemsSum ?? 0), 0, 1000000, "태그 문제 rating 값이 올바르지 않습니다."),
+      ratingBySolvedCount: validateInteger(Number(item.ratingBySolvedCount ?? 0), 0, 1000000, "태그 solved bonus 값이 올바르지 않습니다."),
+    };
+  });
+}
+
 function normalizeImportedPayload(rawPayload, generatedAt) {
   const payload = requireObject(rawPayload, "백업 payload 형식이 올바르지 않습니다.");
   const user = normalizeImportedUser(payload.user);
   const classStats = normalizeImportedClassStats(payload.classStats ?? []);
   const topProblems = normalizeImportedTopProblems(payload.topProblems ?? []);
+  const tagRatings = normalizeImportedTagRatings(payload.tagRatings ?? []);
   const bojStats = normalizeImportedBojStats(payload.bojStats ?? []);
   const languageStats = normalizeImportedLanguageStats(payload.languageStats ?? []);
   const background = normalizeImportedMediaContainer(payload.background, "background");
@@ -1023,6 +1080,7 @@ function normalizeImportedPayload(rawPayload, generatedAt) {
     background,
     classStats,
     topProblems,
+    tagRatings,
     bojStats,
     languageStats,
     stats: {
