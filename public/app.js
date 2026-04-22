@@ -90,6 +90,8 @@ function createDefaultCoverOptions() {
     rearOpacity: 82,
     frontBlur: 0,
     frontOpacity: 62,
+    tagRadarBlur: 2,
+    tagRadarOpacity: 22,
   };
 }
 
@@ -178,6 +180,8 @@ function normalizeCoverOptions(coverOptions = {}) {
     rearOpacity: clamp(Number(coverOptions.rearOpacity ?? defaults.rearOpacity), 0, 100),
     frontBlur: clamp(Number(coverOptions.frontBlur ?? defaults.frontBlur), 0, 24),
     frontOpacity: clamp(Number(coverOptions.frontOpacity ?? defaults.frontOpacity), 0, 100),
+    tagRadarBlur: clamp(Number(coverOptions.tagRadarBlur ?? defaults.tagRadarBlur), 0, 24),
+    tagRadarOpacity: clamp(Number(coverOptions.tagRadarOpacity ?? defaults.tagRadarOpacity), 0, 100),
   };
 }
 
@@ -1272,6 +1276,7 @@ function drawSolvedTagRadar(context, tagRatings, x, y, radius, options = {}) {
 
   context.save();
   context.globalAlpha = options.alpha ?? 0.72;
+  context.filter = options.blur ? `blur(${options.blur}px)` : "none";
   context.lineJoin = "round";
   context.lineCap = "round";
 
@@ -1511,13 +1516,14 @@ async function createProfileCanvas(user, stats, topProblems, tier, classText, me
   const topGridX = isRightLayout ? contentRight - ratingPairWidth - 270 : contentX + 259;
   const rankingSize = 13;
   const textAlign = isRightLayout ? "right" : "left";
-  drawSolvedTagRadar(context, media.tagRatings, isRightLayout ? 276 : 724, 302, 146, {
-    alpha: 0.62,
-    labelGap: 23,
-    labelMaxWidth: 118,
-    scaleLabelSize: 9,
-    tagLabelSize: 10,
-    strokeWidth: 2.2,
+  drawSolvedTagRadar(context, media.tagRatings, width / 2, height / 2, 220, {
+    alpha: coverOptions.tagRadarOpacity / 100,
+    blur: coverOptions.tagRadarBlur,
+    labelGap: 34,
+    labelMaxWidth: 132,
+    scaleLabelSize: 13,
+    tagLabelSize: 13,
+    strokeWidth: 3,
   });
 
   drawRoundedImage(context, profileImage, contentX, 86, 92, 92, 8, "cover");
@@ -1646,14 +1652,6 @@ async function createProfileReportPage(backgroundImage, user, stats, topProblems
   const { cover } = normalizedProfile;
 
   drawProfileImageBackground(context, backgroundImage, width, height, cover);
-  drawSolvedTagRadar(context, media.tagRatings, width / 2, height / 2, 260, {
-    alpha: 0.34,
-    labelGap: 42,
-    labelMaxWidth: 150,
-    scaleLabelSize: 15,
-    tagLabelSize: 16,
-    strokeWidth: 3,
-  });
 
   const profileScale = Math.min(width / profileCanvas.width, height / profileCanvas.height);
   const drawWidth = profileCanvas.width * profileScale;
@@ -2424,6 +2422,8 @@ function createOverviewPanel(user, stats, topProblems, tier, classText, media, r
   createSliderRow("rearOpacity", "뒷배경 불투명도", { min: 0, max: 100, step: 1, suffix: "%" });
   createSliderRow("frontBlur", "앞배경 블러", { min: 0, max: 24, step: 1, suffix: "px" });
   createSliderRow("frontOpacity", "앞배경 불투명도", { min: 0, max: 100, step: 1, suffix: "%" });
+  createSliderRow("tagRadarBlur", "태그 그래프 블러", { min: 0, max: 24, step: 1, suffix: "px" });
+  createSliderRow("tagRadarOpacity", "태그 그래프 불투명도", { min: 0, max: 100, step: 1, suffix: "%" });
 
   function syncFrontLayerState() {
     const disabled = profileOptions.cover.backgroundMode !== "dual";
