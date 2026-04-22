@@ -96,8 +96,19 @@ function createDefaultCoverOptions() {
   return {
     showProfileImage: true,
     showBadge: true,
-    showMeta: true,
+    showHandle: true,
+    showBio: true,
+    showRankings: true,
+    showSummaryStats: true,
+    showRating: true,
+    showTierClass: true,
+    showTop100: true,
+    showBackgroundInfo: true,
+    showBadgeInfo: true,
     showTagRadar: true,
+    showTagRadarLabels: true,
+    showTagRadarNumbers: true,
+    showGraphAnimation: true,
     backgroundMode: "dual",
     rearBlur: 12,
     rearOpacity: 82,
@@ -105,6 +116,7 @@ function createDefaultCoverOptions() {
     frontOpacity: 62,
     tagRadarBlur: 2,
     tagRadarOpacity: 22,
+    tagRadarScale: 100,
   };
 }
 
@@ -189,8 +201,19 @@ function normalizeCoverOptions(coverOptions = {}) {
   return {
     showProfileImage: coverOptions.showProfileImage ?? defaults.showProfileImage,
     showBadge: coverOptions.showBadge ?? defaults.showBadge,
-    showMeta: coverOptions.showMeta ?? defaults.showMeta,
+    showHandle: coverOptions.showHandle ?? defaults.showHandle,
+    showBio: coverOptions.showBio ?? defaults.showBio,
+    showRankings: coverOptions.showRankings ?? defaults.showRankings,
+    showSummaryStats: coverOptions.showSummaryStats ?? defaults.showSummaryStats,
+    showRating: coverOptions.showRating ?? defaults.showRating,
+    showTierClass: coverOptions.showTierClass ?? defaults.showTierClass,
+    showTop100: coverOptions.showTop100 ?? defaults.showTop100,
+    showBackgroundInfo: coverOptions.showBackgroundInfo ?? coverOptions.showMeta ?? defaults.showBackgroundInfo,
+    showBadgeInfo: coverOptions.showBadgeInfo ?? coverOptions.showMeta ?? defaults.showBadgeInfo,
     showTagRadar: coverOptions.showTagRadar ?? defaults.showTagRadar,
+    showTagRadarLabels: coverOptions.showTagRadarLabels ?? defaults.showTagRadarLabels,
+    showTagRadarNumbers: coverOptions.showTagRadarNumbers ?? defaults.showTagRadarNumbers,
+    showGraphAnimation: coverOptions.showGraphAnimation ?? defaults.showGraphAnimation,
     backgroundMode,
     rearBlur: clamp(Number(coverOptions.rearBlur ?? defaults.rearBlur), 0, 32),
     rearOpacity: clamp(Number(coverOptions.rearOpacity ?? defaults.rearOpacity), 0, 100),
@@ -198,6 +221,7 @@ function normalizeCoverOptions(coverOptions = {}) {
     frontOpacity: clamp(Number(coverOptions.frontOpacity ?? defaults.frontOpacity), 0, 100),
     tagRadarBlur: clamp(Number(coverOptions.tagRadarBlur ?? defaults.tagRadarBlur), 0, 24),
     tagRadarOpacity: clamp(Number(coverOptions.tagRadarOpacity ?? defaults.tagRadarOpacity), 0, 100),
+    tagRadarScale: clamp(Number(coverOptions.tagRadarScale ?? defaults.tagRadarScale), 40, 160),
   };
 }
 
@@ -244,6 +268,9 @@ function startMemoryGraph(canvas) {
   let height = 0;
   let animationFrame = 0;
   let nextGraphShift = 0;
+  const maxLinkDistanceRatio = 0.18;
+  const minLinkDistance = 82;
+  const maxLinkDistance = 210;
 
   function createNode(index) {
     const x = Math.random() * width;
@@ -319,13 +346,19 @@ function startMemoryGraph(canvas) {
     }
   }
 
+  function currentMaxLinkDistance() {
+    return Math.min(maxLinkDistance, Math.max(minLinkDistance, Math.min(width, height) * maxLinkDistanceRatio));
+  }
+
   function nearestNodeIndexes(index, limit) {
     const origin = nodes[index];
+    const maxDistance = currentMaxLinkDistance();
     return nodes
       .map((node, nodeIndex) => ({
         index: nodeIndex,
         distance: nodeIndex === index ? Number.POSITIVE_INFINITY : Math.hypot(origin.x - node.x, origin.y - node.y),
       }))
+      .filter((entry) => entry.distance <= maxDistance)
       .sort((first, second) => first.distance - second.distance)
       .slice(0, limit)
       .map((entry) => entry.index);
@@ -333,13 +366,14 @@ function startMemoryGraph(canvas) {
 
   function rebuildLinks(time) {
     const seen = new Set();
-    const targetCount = Math.floor(nodes.length * 0.58);
+    const targetCount = Math.floor(nodes.length * 0.5);
     links.length = 0;
 
     for (let index = 0; index < nodes.length && links.length < targetCount; index += 1) {
-      if (Math.random() < 0.5) continue;
+      if (Math.random() < 0.38) continue;
 
-      const candidates = nearestNodeIndexes(index, 4);
+      const candidates = nearestNodeIndexes(index, 5);
+      if (!candidates.length) continue;
       const nextIndex = candidates[Math.floor(Math.random() * candidates.length)];
       const firstIndex = Math.min(index, nextIndex);
       const secondIndex = Math.max(index, nextIndex);
@@ -671,6 +705,22 @@ function tierColor(level) {
 
   const rankInFamily = ((level - 1) % 5) + 1;
   return palette[rankInFamily - 1];
+}
+
+function hexToRgbComponents(hexColor) {
+  const normalized = String(hexColor || "").replace("#", "");
+  if (!/^[\da-f]{6}$/i.test(normalized)) return null;
+  return [
+    Number.parseInt(normalized.slice(0, 2), 16),
+    Number.parseInt(normalized.slice(2, 4), 16),
+    Number.parseInt(normalized.slice(4, 6), 16),
+  ];
+}
+
+function colorWithAlpha(hexColor, alpha) {
+  const components = hexToRgbComponents(hexColor);
+  if (!components) return `rgba(0, 158, 229, ${alpha})`;
+  return `rgba(${components.join(", ")}, ${alpha})`;
 }
 
 function classDecorationLabel(value) {
@@ -1258,6 +1308,84 @@ function hashString(value) {
   return hash >>> 0;
 }
 
+function createSeededRandom(seed) {
+  let state = seed || 1;
+  return () => {
+    state += 0x6d2b79f5;
+    let value = state;
+    value = Math.imul(value ^ (value >>> 15), value | 1);
+    value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+    return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function drawCoverGraphAnimation(context, width, height, seed) {
+  const random = createSeededRandom(seed);
+  const nodeCount = Math.max(34, Math.round((width * height) / 15000));
+  const maxDistance = Math.min(160, Math.max(92, Math.min(width, height) * 0.18));
+  const nodes = Array.from({ length: nodeCount }, (_, index) => ({
+    x: random() * width,
+    y: random() * height,
+    radius: 1.7 + random() * 2.7,
+    alpha: 0.18 + random() * 0.38,
+    hue: index % 4,
+  }));
+  const links = [];
+  const seen = new Set();
+
+  for (let index = 0; index < nodes.length && links.length < nodeCount * 0.55; index += 1) {
+    if (random() < 0.34) continue;
+    const origin = nodes[index];
+    const candidates = nodes
+      .map((node, nodeIndex) => ({
+        index: nodeIndex,
+        distance: nodeIndex === index ? Number.POSITIVE_INFINITY : Math.hypot(origin.x - node.x, origin.y - node.y),
+      }))
+      .filter((entry) => entry.distance <= maxDistance)
+      .sort((left, right) => left.distance - right.distance)
+      .slice(0, 4);
+    if (!candidates.length) continue;
+
+    const nextIndex = candidates[Math.floor(random() * candidates.length)].index;
+    const firstIndex = Math.min(index, nextIndex);
+    const secondIndex = Math.max(index, nextIndex);
+    const key = `${firstIndex}:${secondIndex}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    links.push({ firstIndex, secondIndex, alpha: 0.06 + random() * 0.1 });
+  }
+
+  context.save();
+  context.globalCompositeOperation = "screen";
+  context.lineCap = "round";
+  context.lineWidth = 1.05;
+
+  for (const link of links) {
+    const first = nodes[link.firstIndex];
+    const second = nodes[link.secondIndex];
+    const alpha = Math.min(first.alpha, second.alpha) * link.alpha;
+    context.strokeStyle = `rgba(58, 176, 158, ${alpha})`;
+    context.beginPath();
+    context.moveTo(first.x, first.y);
+    context.lineTo(second.x, second.y);
+    context.stroke();
+  }
+
+  for (const node of nodes) {
+    const glow = node.hue === 1 ? "119, 118, 150" : node.hue === 2 ? "245, 247, 246" : "58, 176, 158";
+    context.fillStyle = `rgba(${glow}, ${node.alpha * 0.06})`;
+    context.beginPath();
+    context.arc(node.x, node.y, node.radius * 2.6, 0, Math.PI * 2);
+    context.fill();
+    context.fillStyle = `rgba(${glow}, ${node.alpha * 0.72})`;
+    context.beginPath();
+    context.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
+    context.fill();
+  }
+
+  context.restore();
+}
+
 function resolveMajorTagRatings(tagRatings) {
   const ratingByKey = new Map((tagRatings || []).map((tagRating) => [tagRating.key, tagRating]));
   return majorTagKeys.map((key) => {
@@ -1290,6 +1418,9 @@ function drawSolvedTagRadar(context, tagRatings, x, y, radius, options = {}) {
   context.filter = options.blur ? `blur(${options.blur}px)` : "none";
   context.lineJoin = "round";
   context.lineCap = "round";
+  const graphColor = options.strokeColor ?? "#009ee5";
+  const showTagLabels = options.showTagLabels !== false;
+  const showScaleLabels = options.showScaleLabels !== false;
 
   for (const value of ringLabels) {
     const ringRadius = (value / domain) * radius;
@@ -1301,13 +1432,15 @@ function drawSolvedTagRadar(context, tagRatings, x, y, radius, options = {}) {
     context.stroke();
     context.setLineDash([]);
 
-    drawOverviewText(context, String(value), x, y - ringRadius, {
-      color: "rgba(255,255,255,0.42)",
-      size: options.scaleLabelSize ?? 10,
-      weight: 850,
-      align: "center",
-      baseline: "middle",
-    });
+    if (showScaleLabels) {
+      drawOverviewText(context, String(value), x, y - ringRadius, {
+        color: "rgba(255,255,255,0.42)",
+        size: options.scaleLabelSize ?? 10,
+        weight: 850,
+        align: "center",
+        baseline: "middle",
+      });
+    }
   }
 
   for (let index = 0; index < items.length; index += 1) {
@@ -1324,14 +1457,16 @@ function drawSolvedTagRadar(context, tagRatings, x, y, radius, options = {}) {
     context.lineTo(outerX, outerY);
     context.stroke();
 
-    drawOverviewText(context, items[index].label, labelX, labelY, {
-      color: "rgba(255,255,255,0.74)",
-      size: options.tagLabelSize ?? 11,
-      weight: 900,
-      align: "center",
-      baseline: "middle",
-      maxWidth: options.labelMaxWidth ?? 96,
-    });
+    if (showTagLabels) {
+      drawOverviewText(context, items[index].label, labelX, labelY, {
+        color: "rgba(255,255,255,0.74)",
+        size: options.tagLabelSize ?? 11,
+        weight: 900,
+        align: "center",
+        baseline: "middle",
+        maxWidth: options.labelMaxWidth ?? 96,
+      });
+    }
   }
 
   context.beginPath();
@@ -1348,8 +1483,8 @@ function drawSolvedTagRadar(context, tagRatings, x, y, radius, options = {}) {
   }
   context.closePath();
 
-  context.fillStyle = "rgba(0, 158, 229, 0.18)";
-  context.strokeStyle = options.strokeColor ?? "#009ee5";
+  context.fillStyle = colorWithAlpha(graphColor, 0.18);
+  context.strokeStyle = graphColor;
   context.lineWidth = options.strokeWidth ?? 2;
   context.fill();
   context.stroke();
@@ -1527,13 +1662,19 @@ async function createProfileCanvas(user, stats, topProblems, tier, classText, me
   const topGridX = isRightLayout ? contentRight - ratingPairWidth - 270 : contentX + 259;
   const rankingSize = 13;
   const textAlign = isRightLayout ? "right" : "left";
+  if (coverOptions.showGraphAnimation) {
+    drawCoverGraphAnimation(context, width, height, hashString(`${user.handle}:cover-graph`));
+  }
   if (coverOptions.showTagRadar) {
-    drawSolvedTagRadar(context, media.tagRatings, width / 2, height / 2, 220, {
+    drawSolvedTagRadar(context, media.tagRatings, width / 2, height / 2, 220 * (coverOptions.tagRadarScale / 100), {
       alpha: coverOptions.tagRadarOpacity / 100,
       blur: coverOptions.tagRadarBlur,
       labelGap: 34,
       labelMaxWidth: 180,
       scaleLabelSize: 13,
+      showScaleLabels: coverOptions.showTagRadarNumbers,
+      showTagLabels: coverOptions.showTagRadarLabels,
+      strokeColor: tierColor(user.tier),
       tagLabelSize: 11,
       strokeWidth: 3,
     });
@@ -1546,65 +1687,75 @@ async function createProfileCanvas(user, stats, topProblems, tier, classText, me
     drawRoundedImage(context, badgeImage, contentX + 110, 130, 40, 40, 7, "contain");
   }
 
-  drawOverviewText(context, user.handle, textX, 232, fitCanvasText(context, user.handle, handleMaxWidth, {
-    color: "#ffffff",
-    size: typography.handle.size,
-    minimumSize: scaleRoleMetric(typography.handle, 34, 50),
-    weight: typography.handle.weight,
-    family: typography.handle.family,
-    align: textAlign,
-  }));
-  drawWrappedCanvasText(context, user.bio || "one last solved.ac snapshot", textX, 260, handleMaxWidth, {
-    color: "rgba(255,255,255,0.74)",
-    size: typography.bio.size,
-    minimumSize: scaleRoleMetric(typography.bio, 10, 14),
-    maxLines: 2,
-    lineHeight: scaleRoleMetric(typography.bio, 17, 14),
-    weight: typography.bio.weight,
-    family: typography.bio.family,
-    align: textAlign,
-  });
-
-  drawOverviewText(context, `SOLVED.AC RANKING #${formatNumber(user.rank || 0)}`, textX, 294, {
-    color: "rgba(255,255,255,0.72)",
-    size: typography.ranking.size,
-    weight: typography.ranking.weight,
-    family: typography.ranking.family,
-    maxWidth: handleMaxWidth,
-    align: textAlign,
-  });
-  drawOverviewText(context, `BOJ RANKING #${media.bojRank ? formatNumber(media.bojRank) : "--"}`, textX, 312, {
-    color: "rgba(255,255,255,0.72)",
-    size: typography.ranking.size,
-    weight: typography.ranking.weight,
-    family: typography.ranking.family,
-    maxWidth: handleMaxWidth,
-    align: textAlign,
-  });
-
-  overviewStats.forEach(([label, value], index) => {
-    drawOverviewStat(context, label, value, statStartX + statGap * index, 318, statWidth, textAlign, {
-      labelFamily: typography.statLabel.family,
-      labelWeight: typography.statLabel.weight,
-      labelSize: typography.statLabel.size,
-      valueFamily: typography.statValue.family,
-      valueWeight: typography.statValue.weight,
-      valueSize: typography.statValue.size,
+  if (coverOptions.showHandle) {
+    drawOverviewText(context, user.handle, textX, 232, fitCanvasText(context, user.handle, handleMaxWidth, {
+      color: "#ffffff",
+      size: typography.handle.size,
+      minimumSize: scaleRoleMetric(typography.handle, 34, 50),
+      weight: typography.handle.weight,
+      family: typography.handle.family,
+      align: textAlign,
+    }));
+  }
+  if (coverOptions.showBio) {
+    drawWrappedCanvasText(context, user.bio || "one last solved.ac snapshot", textX, 260, handleMaxWidth, {
+      color: "rgba(255,255,255,0.74)",
+      size: typography.bio.size,
+      minimumSize: scaleRoleMetric(typography.bio, 10, 14),
+      maxLines: 2,
+      lineHeight: scaleRoleMetric(typography.bio, 17, 14),
+      weight: typography.bio.weight,
+      family: typography.bio.family,
+      align: textAlign,
     });
-  });
+  }
 
-  drawRatingPair(context, user, stats, textX, 389, {
-    align: textAlign,
-    overOffset: isRightLayout ? 0 : 18,
-    overRightOffset: isRightLayout ? 27 : 0,
-    labelFamily: typography.ratingLabel.family,
-    labelWeight: typography.ratingLabel.weight,
-    labelSize: typography.ratingLabel.size,
-    valueFamily: typography.ratingValue.family,
-    valueWeight: typography.ratingValue.weight,
-    ratingSize: typography.ratingValue.size,
-    overSize: scaleRoleMetric(typography.ratingValue, 20, 38),
-  });
+  if (coverOptions.showRankings) {
+    drawOverviewText(context, `SOLVED.AC RANKING #${formatNumber(user.rank || 0)}`, textX, 294, {
+      color: "rgba(255,255,255,0.72)",
+      size: typography.ranking.size,
+      weight: typography.ranking.weight,
+      family: typography.ranking.family,
+      maxWidth: handleMaxWidth,
+      align: textAlign,
+    });
+    drawOverviewText(context, `BOJ RANKING #${media.bojRank ? formatNumber(media.bojRank) : "--"}`, textX, 312, {
+      color: "rgba(255,255,255,0.72)",
+      size: typography.ranking.size,
+      weight: typography.ranking.weight,
+      family: typography.ranking.family,
+      maxWidth: handleMaxWidth,
+      align: textAlign,
+    });
+  }
+
+  if (coverOptions.showSummaryStats) {
+    overviewStats.forEach(([label, value], index) => {
+      drawOverviewStat(context, label, value, statStartX + statGap * index, 318, statWidth, textAlign, {
+        labelFamily: typography.statLabel.family,
+        labelWeight: typography.statLabel.weight,
+        labelSize: typography.statLabel.size,
+        valueFamily: typography.statValue.family,
+        valueWeight: typography.statValue.weight,
+        valueSize: typography.statValue.size,
+      });
+    });
+  }
+
+  if (coverOptions.showRating) {
+    drawRatingPair(context, user, stats, textX, 389, {
+      align: textAlign,
+      overOffset: isRightLayout ? 0 : 18,
+      overRightOffset: isRightLayout ? 27 : 0,
+      labelFamily: typography.ratingLabel.family,
+      labelWeight: typography.ratingLabel.weight,
+      labelSize: typography.ratingLabel.size,
+      valueFamily: typography.ratingValue.family,
+      valueWeight: typography.ratingValue.weight,
+      ratingSize: typography.ratingValue.size,
+      overSize: scaleRoleMetric(typography.ratingValue, 20, 38),
+    });
+  }
   const ratingTierItems = [
     {
       text: tier.name,
@@ -1627,14 +1778,18 @@ async function createProfileCanvas(user, stats, topProblems, tier, classText, me
       }),
     },
   ];
-  if (isRightLayout) {
-    drawInlineTextRight(context, ratingTierItems, textX, 454);
-  } else {
-    drawInlineText(context, ratingTierItems, textX, 454);
+  if (coverOptions.showTierClass) {
+    if (isRightLayout) {
+      drawInlineTextRight(context, ratingTierItems, textX, 454);
+    } else {
+      drawInlineText(context, ratingTierItems, textX, 454);
+    }
   }
-  drawProfileRatingDots(context, topProblems, topGridX, 398);
+  if (coverOptions.showTop100) {
+    drawProfileRatingDots(context, topProblems, topGridX, 398);
+  }
 
-  if (coverOptions.showMeta) {
+  if (coverOptions.showBackgroundInfo) {
     drawOverviewText(context, `배경 : ${media.backgroundName}`, metaX, 552, {
       color: "rgba(255,255,255,0.72)",
       size: typography.meta.size,
@@ -1643,6 +1798,8 @@ async function createProfileCanvas(user, stats, topProblems, tier, classText, me
       maxWidth: 580,
       align: textAlign,
     });
+  }
+  if (coverOptions.showBadgeInfo) {
     drawOverviewText(context, `뱃지 : ${media.badgeName}`, metaX, 576, {
       color: "rgba(255,255,255,0.72)",
       size: typography.meta.size,
@@ -2257,9 +2414,20 @@ function createOverviewPanel(user, stats, topProblems, tier, classText, media, r
   const fontGroup = createElement("div", "overview-font-group");
   const fontControls = [];
 
+  function createMultilineTextElement(tagName, className, labelText) {
+    const element = createElement(tagName, className);
+    const lines = Array.isArray(labelText) ? labelText : [labelText];
+    element.setAttribute("aria-label", lines.join(" - "));
+    lines.forEach((line, index) => {
+      if (index) element.append(document.createElement("br"));
+      element.append(document.createTextNode(line));
+    });
+    return element;
+  }
+
   function createFontRoleRow(roleKey, titleText) {
     const row = createElement("div", "overview-font-row");
-    row.append(createElement("strong", "overview-font-row-title", titleText));
+    row.append(createMultilineTextElement("strong", "overview-font-row-title", titleText));
 
     const controlsRow = createElement("div", "overview-font-row-controls");
     const familyField = createElement("label", "overview-font-field");
@@ -2349,15 +2517,15 @@ function createOverviewPanel(user, stats, topProblems, tier, classText, media, r
     schedulePreview();
   });
 
-  createFontRoleRow("handle", "아이디");
-  createFontRoleRow("bio", "상태메시지");
+  createFontRoleRow("handle", "핸들");
+  createFontRoleRow("bio", "상태 메시지");
   createFontRoleRow("ranking", "랭킹");
-  createFontRoleRow("statLabel", "통계 라벨");
-  createFontRoleRow("statValue", "통계 값");
-  createFontRoleRow("ratingLabel", "레이팅 라벨");
-  createFontRoleRow("ratingValue", "레이팅 값");
+  createFontRoleRow("statLabel", ["요약 통계", "라벨"]);
+  createFontRoleRow("statValue", ["요약 통계", "값"]);
+  createFontRoleRow("ratingLabel", ["AC / OVER 레이팅", "라벨"]);
+  createFontRoleRow("ratingValue", ["AC / OVER 레이팅", "값"]);
   createFontRoleRow("tier", "티어 / 클래스");
-  createFontRoleRow("meta", "배경 / 뱃지");
+  createFontRoleRow("meta", ["배경 정보", "뱃지 정보"]);
   fontPanel.append(fontGroup);
 
   const visibilityPanel = createElement("details", "overview-font-panel");
@@ -2373,10 +2541,11 @@ function createOverviewPanel(user, stats, topProblems, tier, classText, media, r
   const visibilityGroup = createElement("div", "overview-visibility-group");
   function createVisibilityRow(key, labelText) {
     const row = createElement("div", "overview-visibility-row");
-    row.append(createElement("strong", "overview-visibility-title", labelText));
+    row.append(createMultilineTextElement("strong", "overview-visibility-title", labelText));
     const options = createElement("div", "overview-visibility-options");
+    const labelForA11y = Array.isArray(labelText) ? labelText.join(" - ") : labelText;
     options.setAttribute("role", "radiogroup");
-    options.setAttribute("aria-label", `${labelText} 표시 여부`);
+    options.setAttribute("aria-label", `${labelForA11y} 표시 여부`);
 
     for (const [value, text] of [
       ["show", "표시"],
@@ -2407,8 +2576,19 @@ function createOverviewPanel(user, stats, topProblems, tier, classText, media, r
 
   createVisibilityRow("showProfileImage", "프로필 사진");
   createVisibilityRow("showBadge", "뱃지");
-  createVisibilityRow("showTagRadar", "태그 그래프");
-  createVisibilityRow("showMeta", "배경 / 뱃지 정보");
+  createVisibilityRow("showHandle", "핸들");
+  createVisibilityRow("showBio", "상태 메시지");
+  createVisibilityRow("showRankings", "랭킹");
+  createVisibilityRow("showSummaryStats", "요약 통계");
+  createVisibilityRow("showRating", "AC / OVER 레이팅");
+  createVisibilityRow("showTierClass", "티어 / 클래스");
+  createVisibilityRow("showTop100", "TOP 100");
+  createVisibilityRow("showTagRadar", ["태그 그래프", "전체"]);
+  createVisibilityRow("showTagRadarLabels", ["태그 그래프", "태그명"]);
+  createVisibilityRow("showTagRadarNumbers", ["태그 그래프", "눈금 값"]);
+  createVisibilityRow("showBackgroundInfo", "배경 정보");
+  createVisibilityRow("showBadgeInfo", "뱃지 정보");
+  createVisibilityRow("showGraphAnimation", "그래프 애니메이션");
   visibilityPanel.append(visibilityGroup);
 
   const backgroundModeGroup = createElement("div", "overview-layout-toggle");
@@ -2449,7 +2629,7 @@ function createOverviewPanel(user, stats, topProblems, tier, classText, media, r
     const row = createElement("label", "overview-slider-row");
     row.dataset.key = key;
     const head = createElement("div", "overview-slider-head");
-    const label = createElement("span", "overview-slider-label", labelText);
+    const label = createMultilineTextElement("span", "overview-slider-label", labelText);
     const valueText = createElement("strong", "overview-slider-value", "");
     head.append(label, valueText);
 
@@ -2480,8 +2660,9 @@ function createOverviewPanel(user, stats, topProblems, tier, classText, media, r
   createSliderRow("rearOpacity", "뒷배경 불투명도", { min: 0, max: 100, step: 1, suffix: "%" });
   createSliderRow("frontBlur", "앞배경 블러", { min: 0, max: 24, step: 1, suffix: "px" });
   createSliderRow("frontOpacity", "앞배경 불투명도", { min: 0, max: 100, step: 1, suffix: "%" });
-  createSliderRow("tagRadarBlur", "태그 그래프 블러", { min: 0, max: 24, step: 1, suffix: "px" });
-  createSliderRow("tagRadarOpacity", "태그 그래프 불투명도", { min: 0, max: 100, step: 1, suffix: "%" });
+  createSliderRow("tagRadarBlur", ["태그 그래프", "블러"], { min: 0, max: 24, step: 1, suffix: "px" });
+  createSliderRow("tagRadarOpacity", ["태그 그래프", "불투명도"], { min: 0, max: 100, step: 1, suffix: "%" });
+  createSliderRow("tagRadarScale", ["태그 그래프", "크기"], { min: 40, max: 160, step: 1, suffix: "%" });
 
   function syncLayerState() {
     const disabled = profileOptions.cover.backgroundMode !== "dual";

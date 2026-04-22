@@ -71,6 +71,26 @@ for (const origin of (process.env.BOJ_MEMORY_FRONTEND_ORIGINS || "").split(","))
     allowedFrontendOrigins.add(origin.trim().replace(/\/$/, ""));
   }
 }
+const majorTagKeys = [
+  "math",
+  "implementation",
+  "greedy",
+  "string",
+  "data_structures",
+  "graphs",
+  "dp",
+  "geometry",
+];
+const majorTagLabels = {
+  math: "math",
+  implementation: "implementation",
+  greedy: "greedy",
+  string: "string",
+  data_structures: "data_structures",
+  graphs: "graphs",
+  dp: "dp",
+  geometry: "geometry",
+};
 const memoryCache = new Map();
 const memoryRateLimits = new Map();
 const imageRateLimits = new Map();
@@ -701,6 +721,19 @@ function normalizeTagRatings(payload) {
   }).filter((entry) => entry.key);
 }
 
+function createTagRadarSummary(tagRatings = []) {
+  const ratingByKey = new Map(tagRatings.map((tagRating) => [tagRating.key, tagRating]));
+  return majorTagKeys.map((key) => {
+    const tagRating = ratingByKey.get(key);
+    return {
+      key,
+      label: majorTagLabels[key] ?? key,
+      rating: Number(tagRating?.rating ?? 0) || 0,
+      solvedCount: Number(tagRating?.solvedCount ?? 0) || 0,
+    };
+  });
+}
+
 function getClassLabel(user) {
   if (!user?.class) return "CLASS 없음";
   const decoration = {
@@ -816,6 +849,7 @@ function createBackupSnapshot(payload) {
       tier: payload.user?.tier ?? 0,
       overRating: payload.user?.overRating ?? 0,
     },
+    tagRadar: createTagRadarSummary(payload.tagRatings ?? []),
     payload,
   };
 }
@@ -842,6 +876,11 @@ function formatBackupText(snapshot, { digest, signature }) {
     `ac rating: ${summary.rating ?? 0}`,
     `over rating: ${summary.overRating ?? 0}`,
     `class: ${summary.classLabel || "CLASS 없음"}`,
+    "",
+    "[tag_radar]",
+    ...(snapshot.tagRadar ?? []).map((tag) => (
+      `${tag.label}: rating ${tag.rating ?? 0}, solved ${tag.solvedCount ?? 0}`
+    )),
     "",
     "[integrity]",
     "This backup text is generated on the server.",

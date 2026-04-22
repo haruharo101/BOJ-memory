@@ -1485,7 +1485,7 @@ input {
 
 .overview-visibility-row {
   display: grid;
-  grid-template-columns: minmax(110px, 0.9fr) minmax(0, 1.4fr);
+  grid-template-columns: minmax(132px, 0.9fr) minmax(0, 1.4fr);
   align-items: center;
   gap: 10px;
 }
@@ -1495,6 +1495,7 @@ input {
   font-size: 0.82rem;
   font-weight: 650;
   line-height: 1.2;
+  overflow-wrap: anywhere;
 }
 
 .overview-visibility-options {
@@ -1622,7 +1623,8 @@ input {
   color: white;
   font-size: 0.82rem;
   font-weight: 650;
-  line-height: 1;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
 }
 
 .overview-font-row-controls {
@@ -1725,6 +1727,7 @@ input {
   font-size: 0.86rem;
   font-weight: 550;
   line-height: 1.3;
+  overflow-wrap: anywhere;
 }
 
 .overview-slider-value {
