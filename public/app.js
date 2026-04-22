@@ -38,6 +38,16 @@ const majorTagKeys = [
   "dp",
   "geometry",
 ];
+const majorTagLabels = {
+  math: "math",
+  implementation: "impl",
+  greedy: "greedy",
+  string: "string",
+  data_structures: "data",
+  graphs: "graphs",
+  dp: "dp",
+  geometry: "geom",
+};
 const coverFontPresets = [
   {
     id: "pretendard",
@@ -1242,18 +1252,13 @@ function hashString(value) {
   return hash >>> 0;
 }
 
-function tagDisplayKey(tagRating) {
-  const englishName = tagRating.displayNames?.find((name) => name.language === "en");
-  return englishName?.short || tagRating.key;
-}
-
 function resolveMajorTagRatings(tagRatings) {
   const ratingByKey = new Map((tagRatings || []).map((tagRating) => [tagRating.key, tagRating]));
   return majorTagKeys.map((key) => {
     const tagRating = ratingByKey.get(key);
     return {
       key,
-      label: tagRating ? tagDisplayKey(tagRating) : key,
+      label: majorTagLabels[key] ?? key,
       rating: Number(tagRating?.rating || 0),
       solvedCount: Number(tagRating?.solvedCount || 0),
     };
