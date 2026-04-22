@@ -30,7 +30,7 @@ BOJ_MEMORY_FRONTEND_ORIGINS=https://example.com,https://www.example.com
 
 ## 업데이트 로그
 
-### 2026-04-20
+### 2026-04-22
 
 - 모바일 `TOP 100 TIERS` 그리드가 화면 폭에 맞춰 줄어들도록 반응형 열 계산으로 수정
 - 모바일 하단 섹션 네비게이션과 현재 섹션 라벨을 제거해 스크롤 중 잘림 / 사라짐 현상을 정리
