@@ -1219,23 +1219,56 @@ function drawReportBackground(context, image, width, height) {
   context.fillRect(0, 0, width, height);
 }
 
-function drawProfileImageGrid(context, width, height) {
-  context.strokeStyle = "rgba(255, 255, 255, 0.045)";
-  context.lineWidth = 1;
+function drawOctagonPath(context, x, y, radius, rotation = Math.PI / 8) {
+  context.beginPath();
+  for (let point = 0; point < 8; point += 1) {
+    const angle = rotation + (Math.PI * 2 * point) / 8;
+    const px = x + Math.cos(angle) * radius;
+    const py = y + Math.sin(angle) * radius;
+    if (point === 0) {
+      context.moveTo(px, py);
+    } else {
+      context.lineTo(px, py);
+    }
+  }
+  context.closePath();
+}
 
-  for (let position = 0; position <= width; position += 40) {
-    context.beginPath();
-    context.moveTo(position, 0);
-    context.lineTo(position, height);
+function drawSolvedProfileOctagons(context, width, height, seed) {
+  const random = createSeededRandom(seed);
+  const palette = [
+    "255, 255, 255",
+    "79, 218, 196",
+    "150, 166, 255",
+  ];
+  const count = Math.max(22, Math.round((width * height) / 24000));
+
+  context.save();
+  context.globalCompositeOperation = "screen";
+
+  for (let index = 0; index < count; index += 1) {
+    const radius = 28 + random() * 86;
+    const x = -radius * 0.4 + random() * (width + radius * 0.8);
+    const y = -radius * 0.4 + random() * (height + radius * 0.8);
+    const color = palette[index % palette.length];
+    const alpha = 0.04 + random() * 0.09;
+    const rotation = Math.PI / 8 + random() * 0.1 - 0.05;
+
+    context.lineWidth = 1 + random() * 2.2;
+    context.strokeStyle = `rgba(${color}, ${alpha})`;
+    drawOctagonPath(context, x, y, radius, rotation);
     context.stroke();
+
+    if (random() > 0.48) {
+      context.lineWidth = 1;
+      context.strokeStyle = `rgba(${color}, ${alpha * 0.52})`;
+      drawOctagonPath(context, x, y, radius * (0.62 + random() * 0.18), rotation);
+      context.stroke();
+    }
   }
 
-  for (let position = 0; position <= height; position += 40) {
-    context.beginPath();
-    context.moveTo(0, position);
-    context.lineTo(width, position);
-    context.stroke();
-  }
+  context.globalCompositeOperation = "source-over";
+  context.restore();
 }
 
 function hashString(value) {
@@ -1256,41 +1289,6 @@ function createSeededRandom(seed) {
     value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
     return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
   };
-}
-
-function drawProfileImageNodes(context, width, height, seed) {
-  const random = createSeededRandom(seed);
-  const nodes = Array.from({ length: 34 }, (_, index) => ({
-    x: random() * width,
-    y: random() * height,
-    radius: 1.8 + random() * 3.2,
-    alpha: 0.18 + random() * 0.42,
-    accent: index % 3 === 0,
-  }));
-
-  context.lineWidth = 1;
-  for (let index = 0; index < nodes.length - 1; index += 1) {
-    if (random() < 0.44) continue;
-    const next = nodes[index + 1 + Math.floor(random() * Math.min(4, nodes.length - index - 1))];
-    if (!next) continue;
-    context.strokeStyle = "rgba(58, 176, 158, 0.16)";
-    context.beginPath();
-    context.moveTo(nodes[index].x, nodes[index].y);
-    context.lineTo(next.x, next.y);
-    context.stroke();
-  }
-
-  for (const node of nodes) {
-    const color = node.accent ? "58, 176, 158" : "255, 255, 255";
-    context.fillStyle = `rgba(${color}, ${node.alpha * 0.16})`;
-    context.beginPath();
-    context.arc(node.x, node.y, node.radius * 3, 0, Math.PI * 2);
-    context.fill();
-    context.fillStyle = `rgba(${color}, ${node.alpha})`;
-    context.beginPath();
-    context.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
-    context.fill();
-  }
 }
 
 function createScaledCanvas(width, height, scale = 1, fontFamily = canvasFontFamily) {
@@ -1442,8 +1440,7 @@ async function createProfileCanvas(user, stats, topProblems, tier, classText, me
   ]);
 
   drawProfileImageBackground(context, backgroundImage, width, height, coverOptions);
-  drawProfileImageGrid(context, width, height);
-  drawProfileImageNodes(context, width, height, hashString(user.handle));
+  drawSolvedProfileOctagons(context, width, height, hashString(user.handle));
 
   const isRightLayout = profileLayout === "right";
   const contentRight = 926;
@@ -1593,8 +1590,7 @@ async function createProfileReportPage(backgroundImage, user, stats, topProblems
   const { cover } = normalizedProfile;
 
   drawProfileImageBackground(context, backgroundImage, width, height, cover);
-  drawProfileImageGrid(context, width, height);
-  drawProfileImageNodes(context, width, height, hashString(`${user.handle}:profile-report`));
+  drawSolvedProfileOctagons(context, width, height, hashString(`${user.handle}:profile-report`));
 
   const profileScale = Math.min(width / profileCanvas.width, height / profileCanvas.height);
   const drawWidth = profileCanvas.width * profileScale;

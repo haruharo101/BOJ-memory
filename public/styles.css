@@ -1848,10 +1848,6 @@ input {
 }
 
 @media (max-width: 820px) {
-  :root {
-    --mobile-shell-width: min(560px, calc(100vw - 24px));
-  }
-
   .shell {
     width: min(100% - 24px, 560px);
     padding: 0;
@@ -1863,97 +1859,12 @@ input {
 
   .memory {
     margin-top: 10svh;
-    padding-bottom: calc(132px + env(safe-area-inset-bottom));
+    padding-bottom: calc(64px + env(safe-area-inset-bottom));
   }
 
-  .story-nav {
-    top: auto;
-    right: auto;
-    bottom: calc(24px + env(safe-area-inset-bottom));
-    left: 50%;
-    z-index: 10;
-    width: var(--mobile-shell-width);
-    max-width: var(--mobile-shell-width);
-    min-height: 34px;
-    grid-template-columns: repeat(var(--story-count, 8), minmax(0, 1fr));
-    align-items: center;
-    gap: 4px;
-    padding: 0 12px;
-    overflow: visible;
-    isolation: isolate;
-    transform: translateX(-50%);
-  }
-
+  .story-nav,
   .story-nav-current {
-    position: fixed;
-    bottom: calc(84px + env(safe-area-inset-bottom));
-    left: 50%;
-    z-index: 11;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: var(--mobile-shell-width);
-    max-width: var(--mobile-shell-width);
-    padding: 0 12px;
-    color: rgb(255 255 255 / 84%);
-    font-size: 0.84rem;
-    font-weight: 900;
-    line-height: 1;
-    text-align: center;
-    text-transform: uppercase;
-    letter-spacing: 0;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-    overflow: hidden;
-    opacity: 0;
-    transform: translate(-50%, 6px);
-    pointer-events: none;
-    transition:
-      opacity 180ms ease,
-      transform 180ms ease;
-  }
-
-  .story-nav-current.is-visible {
-    opacity: 1;
-    transform: translate(-50%, 0);
-  }
-
-  .story-nav::before {
-    top: 50%;
-    right: 0;
-    left: 0;
-    bottom: auto;
-    width: auto;
-    height: 2px;
-    background: linear-gradient(90deg, transparent, rgb(255 255 255 / 38%) 16%, rgb(255 255 255 / 38%) 84%, transparent);
-    transform: translateY(-50%);
-  }
-
-  .story-nav-item {
-    height: 34px;
-    padding: 0;
-    color: transparent;
-    text-align: center;
-  }
-
-  .story-nav-item::after {
-    top: 50%;
-    right: auto;
-    left: 50%;
-    background: rgb(255 255 255 / 42%);
-    transform: translate(-50%, -50%);
-  }
-
-  .story-nav-item.is-active {
-    color: transparent;
-    transform: none;
-  }
-
-  .story-nav-item.is-active::after {
-    box-shadow:
-      0 0 0 2px rgb(79 218 196 / 26%),
-      0 0 14px rgb(79 218 196 / 76%);
-    transform: translate(-50%, -50%) scale(1.18);
+    display: none !important;
   }
 
   .search-row {
