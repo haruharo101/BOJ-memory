@@ -1721,8 +1721,10 @@ async function createProfileCanvas(user, stats, topProblems, tier, classText, me
   if (coverOptions.showBojRanking) {
     rankingRows.push(`BOJ RANKING #${media.bojRank ? formatNumber(media.bojRank) : "--"}`);
   }
+  const rankingLineGap = 18;
+  const rankingStartY = 294 + ((2 - rankingRows.length) * rankingLineGap) / 2;
   rankingRows.forEach((rankingText, index) => {
-    drawOverviewText(context, rankingText, textX, 294 + index * 18, {
+    drawOverviewText(context, rankingText, textX, rankingStartY + index * rankingLineGap, {
       color: "rgba(255,255,255,0.72)",
       size: typography.ranking.size,
       weight: typography.ranking.weight,
