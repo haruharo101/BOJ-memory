@@ -28,6 +28,7 @@ const reportPageHeight = 900;
 const reportRenderScale = 2;
 const backupImportMaxBytes = 2 * 1024 * 1024;
 const canvasFontFamily = "Pretendard, system-ui, sans-serif";
+const bojRankLabel = "등수";
 const majorTagKeys = [
   "math",
   "implementation",
@@ -98,7 +99,8 @@ function createDefaultCoverOptions() {
     showBadge: true,
     showHandle: true,
     showBio: true,
-    showRankings: true,
+    showSolvedAcRanking: true,
+    showBojRanking: true,
     showSummaryStats: true,
     showRating: true,
     showTierClass: true,
@@ -203,7 +205,8 @@ function normalizeCoverOptions(coverOptions = {}) {
     showBadge: coverOptions.showBadge ?? defaults.showBadge,
     showHandle: coverOptions.showHandle ?? defaults.showHandle,
     showBio: coverOptions.showBio ?? defaults.showBio,
-    showRankings: coverOptions.showRankings ?? defaults.showRankings,
+    showSolvedAcRanking: coverOptions.showSolvedAcRanking ?? coverOptions.showRankings ?? defaults.showSolvedAcRanking,
+    showBojRanking: coverOptions.showBojRanking ?? coverOptions.showRankings ?? defaults.showBojRanking,
     showSummaryStats: coverOptions.showSummaryStats ?? defaults.showSummaryStats,
     showRating: coverOptions.showRating ?? defaults.showRating,
     showTierClass: coverOptions.showTierClass ?? defaults.showTierClass,
@@ -924,15 +927,16 @@ function createRatingDetails(user, stats, topProblems) {
 function createBojStatsPanel(bojStats) {
   const panel = createStoryPanel("BOJ stats");
   panel.section.classList.add("boj-stats-story-panel");
+  const visibleBojStats = bojStats.filter((stat) => stat.label !== bojRankLabel);
 
-  if (!bojStats.length) {
+  if (!visibleBojStats.length) {
     panel.inner.append(createElement("p", "story-detail", "BOJ 프로필 통계를 읽어오지 못했습니다."));
     return panel.section;
   }
 
-  const priorityLabels = ["등수", "맞은 문제", "맞았습니다"];
-  const priorityStats = priorityLabels.map((label) => bojStats.find((stat) => stat.label === label)).filter(Boolean);
-  const restStats = bojStats.filter((stat) => !priorityLabels.includes(stat.label));
+  const priorityLabels = ["맞은 문제", "맞았습니다"];
+  const priorityStats = priorityLabels.map((label) => visibleBojStats.find((stat) => stat.label === label)).filter(Boolean);
+  const restStats = visibleBojStats.filter((stat) => !priorityLabels.includes(stat.label));
 
   const priorityGrid = createElement("div", "boj-stat-priority");
   for (const stat of priorityStats) {
@@ -958,7 +962,7 @@ function createBojStatItem(stat, isPriority) {
 }
 
 function bojStatLabel(label) {
-  return label === "등수" ? "등수(BOJ)" : label;
+  return label;
 }
 
 function resultColor(styleClass) {
@@ -1710,24 +1714,23 @@ async function createProfileCanvas(user, stats, topProblems, tier, classText, me
     });
   }
 
-  if (coverOptions.showRankings) {
-    drawOverviewText(context, `SOLVED.AC RANKING #${formatNumber(user.rank || 0)}`, textX, 294, {
-      color: "rgba(255,255,255,0.72)",
-      size: typography.ranking.size,
-      weight: typography.ranking.weight,
-      family: typography.ranking.family,
-      maxWidth: handleMaxWidth,
-      align: textAlign,
-    });
-    drawOverviewText(context, `BOJ RANKING #${media.bojRank ? formatNumber(media.bojRank) : "--"}`, textX, 312, {
-      color: "rgba(255,255,255,0.72)",
-      size: typography.ranking.size,
-      weight: typography.ranking.weight,
-      family: typography.ranking.family,
-      maxWidth: handleMaxWidth,
-      align: textAlign,
-    });
+  const rankingRows = [];
+  if (coverOptions.showSolvedAcRanking) {
+    rankingRows.push(`SOLVED.AC RANKING #${formatNumber(user.rank || 0)}`);
   }
+  if (coverOptions.showBojRanking) {
+    rankingRows.push(`BOJ RANKING #${media.bojRank ? formatNumber(media.bojRank) : "--"}`);
+  }
+  rankingRows.forEach((rankingText, index) => {
+    drawOverviewText(context, rankingText, textX, 294 + index * 18, {
+      color: "rgba(255,255,255,0.72)",
+      size: typography.ranking.size,
+      weight: typography.ranking.weight,
+      family: typography.ranking.family,
+      maxWidth: handleMaxWidth,
+      align: textAlign,
+    });
+  });
 
   if (coverOptions.showSummaryStats) {
     overviewStats.forEach(([label, value], index) => {
@@ -2013,6 +2016,7 @@ function drawBojReportStatsGrid(context, stats, startY) {
 }
 
 function createBojReportPages(backgroundImage, user, bojStats, fontFamily = canvasFontFamily) {
+  const visibleBojStats = bojStats.filter((stat) => stat.label !== bojRankLabel);
   const emptyPage = () => createReportPage(
     backgroundImage,
     "BOJ STATS",
@@ -2021,7 +2025,7 @@ function createBojReportPages(backgroundImage, user, bojStats, fontFamily = canv
     fontFamily,
   );
 
-  if (!bojStats.length) {
+  if (!visibleBojStats.length) {
     const { canvas, context } = emptyPage();
     drawOverviewText(context, "BOJ 프로필 통계를 읽어오지 못했습니다.", 82, 220, {
       color: "rgba(255,255,255,0.72)",
@@ -2031,9 +2035,9 @@ function createBojReportPages(backgroundImage, user, bojStats, fontFamily = canv
     return [canvas];
   }
 
-  const priorityLabels = ["등수", "맞은 문제", "맞았습니다"];
-  const priorityStats = priorityLabels.map((label) => bojStats.find((stat) => stat.label === label)).filter(Boolean);
-  const restStats = bojStats.filter((stat) => !priorityLabels.includes(stat.label));
+  const priorityLabels = ["맞은 문제", "맞았습니다"];
+  const priorityStats = priorityLabels.map((label) => visibleBojStats.find((stat) => stat.label === label)).filter(Boolean);
+  const restStats = visibleBojStats.filter((stat) => !priorityLabels.includes(stat.label));
   const pages = [];
   const restPerPage = 20;
 
@@ -2578,7 +2582,8 @@ function createOverviewPanel(user, stats, topProblems, tier, classText, media, r
   createVisibilityRow("showBadge", "뱃지");
   createVisibilityRow("showHandle", "핸들");
   createVisibilityRow("showBio", "상태 메시지");
-  createVisibilityRow("showRankings", "랭킹");
+  createVisibilityRow("showSolvedAcRanking", ["solved.ac", "랭킹"]);
+  createVisibilityRow("showBojRanking", ["BOJ", "랭킹"]);
   createVisibilityRow("showSummaryStats", "요약 통계");
   createVisibilityRow("showRating", "AC / OVER 레이팅");
   createVisibilityRow("showTierClass", "티어 / 클래스");
@@ -2926,6 +2931,7 @@ function setActiveCategory(category) {
 
 function renderMemory(payload) {
   const { user, badge, background, classStats = [], topProblems = [], tagRatings = [], bojStats = [], languageStats = [], stats } = payload;
+  const visibleBojStats = bojStats.filter((stat) => stat.label !== bojRankLabel);
   const backgroundData = background?.background ?? background;
   const badgeData = badge?.badge ?? badge;
   const tier = tierInfo(user.tier);
@@ -2934,7 +2940,7 @@ function renderMemory(payload) {
     backgroundData?.backgroundImageUrl || backgroundData?.fallbackBackgroundImageUrl || fallbackBackground();
   const badgeUrl = badgeData?.badgeImageUrl || fallbackBadge();
   const classText = user.class ? `CLASS ${user.class}${classDecorationLabel(user.classDecoration)}` : "CLASS 없음";
-  const bojRank = bojStats.find((stat) => stat.label === "등수")?.value;
+  const bojRank = bojStats.find((stat) => stat.label === bojRankLabel)?.value;
   const categories = [
     "search",
     "user info",
@@ -2974,7 +2980,6 @@ function renderMemory(payload) {
   const userRankings = createElement("div", "user-ranking-row");
   userRankings.append(
     createElement("span", "user-ranking-text", `solved.ac ranking #${formatNumber(user.rank || 0)}`),
-    createElement("span", "user-ranking-text", `BOJ ranking #${bojRank ? formatNumber(bojRank) : "--"}`),
   );
   userPanel.inner.append(userRankings);
 
@@ -3034,7 +3039,7 @@ function renderMemory(payload) {
   );
   story.append(ratingPanel.section);
 
-  story.append(createBojStatsPanel(bojStats));
+  story.append(createBojStatsPanel(visibleBojStats));
   story.append(createLanguageStatsPanel(languageStats));
   story.append(
     createOverviewPanel(user, stats, topProblems, tier, classText, {
@@ -3048,7 +3053,7 @@ function renderMemory(payload) {
     }, {
       classStats,
       tagRatings,
-      bojStats,
+      bojStats: visibleBojStats,
       languageStats,
     }),
   );
