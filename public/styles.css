@@ -1490,6 +1490,13 @@ input {
   gap: 10px;
 }
 
+.overview-manual-rank-row {
+  display: grid;
+  grid-template-columns: minmax(132px, 0.9fr) minmax(0, 1.4fr);
+  align-items: center;
+  gap: 10px;
+}
+
 .overview-visibility-title {
   color: rgb(255 255 255 / 82%);
   font-size: 0.82rem;
@@ -1532,6 +1539,30 @@ input {
 .overview-visibility-options input:focus-visible + .overview-layout-option {
   outline: 2px solid white;
   outline-offset: 2px;
+}
+
+.overview-manual-rank-input {
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid rgb(255 255 255 / 18%);
+  border-radius: 8px;
+  background: rgb(255 255 255 / 8%);
+  color: white;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 650;
+  outline: none;
+}
+
+.overview-manual-rank-input::placeholder {
+  color: rgb(255 255 255 / 42%);
+}
+
+.overview-manual-rank-input:focus-visible {
+  border-color: rgb(255 255 255 / 54%);
+  box-shadow: 0 0 0 2px rgb(255 255 255 / 16%);
 }
 
 .overview-cover-heading {
