@@ -29,6 +29,9 @@ const reportRenderScale = 2;
 const backupImportMaxBytes = 2 * 1024 * 1024;
 const canvasFontFamily = "Pretendard, system-ui, sans-serif";
 const bojRankLabel = "등수";
+const bojRankingInputMax = 100000000;
+const showBojStatsSection = false;
+const showLanguageStatsSection = false;
 const majorTagKeys = [
   "math",
   "implementation",
@@ -100,7 +103,7 @@ function createDefaultCoverOptions() {
     showHandle: true,
     showBio: true,
     showSolvedAcRanking: true,
-    showBojRanking: true,
+    showBojRanking: false,
     showSummaryStats: true,
     showRating: true,
     showTierClass: true,
@@ -119,6 +122,7 @@ function createDefaultCoverOptions() {
     tagRadarBlur: 2,
     tagRadarOpacity: 22,
     tagRadarScale: 100,
+    manualBojRank: null,
   };
 }
 
@@ -142,6 +146,19 @@ function sanitizeFontSizeInputValue(value) {
   const digits = String(value ?? "").replace(/\D+/g, "");
   if (!digits) return "";
   return String(Math.min(Number(digits.slice(0, 9)), coverFontSizeInputMax));
+}
+
+function sanitizeBojRankingInputValue(value) {
+  const digits = String(value ?? "").replace(/\D+/g, "");
+  if (!digits) return "";
+  const normalized = Number(digits.slice(0, 9));
+  if (!normalized) return "";
+  return String(Math.min(normalized, bojRankingInputMax));
+}
+
+function normalizeManualBojRank(value) {
+  const sanitizedValue = sanitizeBojRankingInputValue(value);
+  return sanitizedValue ? Number(sanitizedValue) : null;
 }
 
 function resolveAppliedFontSizeValue(value, fallback) {
@@ -225,6 +242,7 @@ function normalizeCoverOptions(coverOptions = {}) {
     tagRadarBlur: clamp(Number(coverOptions.tagRadarBlur ?? defaults.tagRadarBlur), 0, 24),
     tagRadarOpacity: clamp(Number(coverOptions.tagRadarOpacity ?? defaults.tagRadarOpacity), 0, 100),
     tagRadarScale: clamp(Number(coverOptions.tagRadarScale ?? defaults.tagRadarScale), 40, 160),
+    manualBojRank: normalizeManualBojRank(coverOptions.manualBojRank),
   };
 }
 
@@ -1719,7 +1737,8 @@ async function createProfileCanvas(user, stats, topProblems, tier, classText, me
     rankingRows.push(`SOLVED.AC RANKING #${formatNumber(user.rank || 0)}`);
   }
   if (coverOptions.showBojRanking) {
-    rankingRows.push(`BOJ RANKING #${media.bojRank ? formatNumber(media.bojRank) : "--"}`);
+    const bojRank = coverOptions.manualBojRank ?? media.bojRank;
+    rankingRows.push(`BOJ RANKING #${bojRank ? formatNumber(bojRank) : "--"}`);
   }
   const rankingLineGap = 18;
   const rankingStartY = 294 + ((2 - rankingRows.length) * rankingLineGap) / 2;
@@ -2580,12 +2599,51 @@ function createOverviewPanel(user, stats, topProblems, tier, classText, media, r
     visibilityGroup.append(row);
   }
 
+  function createManualBojRankRow() {
+    const row = createElement("label", "overview-manual-rank-row");
+    row.append(createMultilineTextElement("strong", "overview-visibility-title", ["BOJ 랭킹", "수동 입력"]));
+
+    const input = createElement("input", "overview-manual-rank-input");
+    input.type = "text";
+    input.inputMode = "numeric";
+    input.autocomplete = "off";
+    input.spellcheck = false;
+    input.maxLength = 9;
+    input.pattern = "[0-9]*";
+    input.placeholder = "1~100000000";
+    input.setAttribute("aria-label", "BOJ 랭킹 수동 입력");
+    input.title = "1~100000000 사이의 숫자만 입력할 수 있습니다.";
+    input.value = profileOptions.cover.manualBojRank ? String(profileOptions.cover.manualBojRank) : "";
+    input.addEventListener("beforeinput", (event) => {
+      if (event.inputType.startsWith("delete")) return;
+      if (event.data && /\D/.test(event.data)) {
+        event.preventDefault();
+      }
+    });
+    input.addEventListener("input", () => {
+      const nextValue = sanitizeBojRankingInputValue(input.value);
+      input.value = nextValue;
+      profileOptions.cover.manualBojRank = normalizeManualBojRank(nextValue);
+      schedulePreview();
+    });
+    input.addEventListener("blur", () => {
+      const nextValue = sanitizeBojRankingInputValue(input.value);
+      input.value = nextValue;
+      profileOptions.cover.manualBojRank = normalizeManualBojRank(nextValue);
+      schedulePreview();
+    });
+
+    row.append(input);
+    visibilityGroup.append(row);
+  }
+
   createVisibilityRow("showProfileImage", "프로필 사진");
   createVisibilityRow("showBadge", "뱃지");
   createVisibilityRow("showHandle", "핸들");
   createVisibilityRow("showBio", "상태 메시지");
   createVisibilityRow("showSolvedAcRanking", ["solved.ac", "랭킹"]);
   createVisibilityRow("showBojRanking", ["BOJ", "랭킹"]);
+  createManualBojRankRow();
   createVisibilityRow("showSummaryStats", "요약 통계");
   createVisibilityRow("showRating", "AC / OVER 레이팅");
   createVisibilityRow("showTierClass", "티어 / 클래스");
@@ -2948,8 +3006,8 @@ function renderMemory(payload) {
     "user info",
     "class",
     "AC RATING",
-    "BOJ stats",
-    "language stats",
+    ...(showBojStatsSection ? ["BOJ stats"] : []),
+    ...(showLanguageStatsSection ? ["language stats"] : []),
     "save to file",
   ];
 
@@ -3041,8 +3099,12 @@ function renderMemory(payload) {
   );
   story.append(ratingPanel.section);
 
-  story.append(createBojStatsPanel(visibleBojStats));
-  story.append(createLanguageStatsPanel(languageStats));
+  if (showBojStatsSection) {
+    story.append(createBojStatsPanel(visibleBojStats));
+  }
+  if (showLanguageStatsSection) {
+    story.append(createLanguageStatsPanel(languageStats));
+  }
   story.append(
     createOverviewPanel(user, stats, topProblems, tier, classText, {
       profileUrl,

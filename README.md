@@ -30,6 +30,11 @@ BOJ_MEMORY_FRONTEND_ORIGINS=https://example.com,https://www.example.com
 
 ## 업데이트 로그
 
+### 2026-04-28
+
+- 저장 이미지 표지의 BOJ 랭킹 표시 기본값을 미표시로 변경하고, `표시 설정`에 1부터 1억까지의 숫자만 입력할 수 있는 BOJ 랭킹 수동 입력칸 추가
+- 자신 이외의 BOJ 프로필 정보를 확인하기 어려워진 상황에 맞춰 BOJ stats와 Language stats 섹션을 기본 표시하지 않도록 변경
+
 ### 2026-04-27
 
 - BOJ 랭킹을 USER INFO와 BOJ stats 통계 목록에서 제거하고, 저장 이미지 표지 커스터마이징의 `표시 설정`에서 solved.ac 랭킹 / BOJ 랭킹을 각각 표시 또는 미표시로 설정할 수 있도록 변경
