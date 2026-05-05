@@ -30,6 +30,10 @@ BOJ_MEMORY_FRONTEND_ORIGINS=https://example.com,https://www.example.com
 
 ## 업데이트 로그
 
+### 2026-05-05
+
+- 메인 페이지의 BOJ 안내 문구를 서비스 종료 이후 solved.ac 정보만 불러온다는 내용으로 수정
+
 ### 2026-04-28
 
 - 저장 이미지 표지의 BOJ 랭킹 표시 기본값을 미표시로 변경하고, `표시 설정`에 1부터 1억까지의 숫자만 입력할 수 있는 BOJ 랭킹 수동 입력칸 추가
